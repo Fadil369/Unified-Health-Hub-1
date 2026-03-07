@@ -1,0 +1,1098 @@
+# 🧠 BrainSAIT Ultimate — Unified Healthcare Platform
+
+## Complete Replit Build Prompt: iOS & Android Mobile App
+
+> **Stack**: React Native + Expo | **Target**: iOS & Android | **Platform**: Replit  
+> **Domain**: NPHIES-Aligned Saudi Healthcare Insurance | **Region**: Saudi Arabia → MENA → Global
+
+-----
+
+## 📋 PROJECT OVERVIEW
+
+Build **BrainSAIT Ultimate** — a production-grade, bilingual (Arabic/English) mobile healthcare insurance platform for Saudi Arabia. This app serves as the citizen-facing interface to the NPHIES (National Platform for Health Information Exchange Services) backend, aligned with Saudi Vision 2030.
+
+The app must handle real-time insurance eligibility checks, prior authorization, claims management, digital health wallet, AI-powered decision support, and full FHIR R4 compliance — all within a beautiful, glass-morphism UI with RTL/LTR adaptive layouts.
+
+-----
+
+## 🎯 CORE OBJECTIVES
+
+|Objective                         |Target       |
+|----------------------------------|-------------|
+|Eligibility Check Latency         |< 900ms P99  |
+|Prior Auth Auto-Approval          |90% by Year 3|
+|Claims Straight-Through Processing|75% by Year 3|
+|Fraud Detection Precision         |≥ 0.8        |
+|System Availability               |99.95% SLA   |
+|App Load Time                     |< 2.5 seconds|
+|UI Frame Rate                     |60 fps       |
+|Memory Usage                      |< 100 MB     |
+
+-----
+
+## 🏗️ TECHNICAL STACK
+
+### Mobile Framework
+
+```
+Framework:        React Native 0.73+ with Expo SDK 50+
+Language:         TypeScript (strict mode, no any)
+State Management: Zustand + React Query (TanStack Query v5)
+Navigation:       Expo Router (file-based routing)
+UI Library:       NativeWind (Tailwind for React Native) + custom components
+Animations:       React Native Reanimated 3 + Lottie
+Forms:            React Hook Form + Zod validation
+```
+
+### Backend Integration
+
+```
+API Layer:        FHIR R4 REST endpoints (existing Go microservices)
+Real-time:        WebSocket + Apache Kafka consumer bridge
+Auth:             OAuth2 + OIDC (JWT tokens, Absher/eID ready)
+Offline:          WatermelonDB for local FHIR resource caching
+Push:             Expo Notifications (APNs + FCM)
+```
+
+### Security & Compliance
+
+```
+Encryption:       AES-256 at rest, TLS 1.3 in transit
+Biometrics:       expo-local-authentication (Face ID / fingerprint)
+Storage:          expo-secure-store for PHI/tokens
+Audit:            Every PHI access logged with timestamp + user + action
+Compliance:       HIPAA, PDPL (Saudi), NPHIES standards
+```
+
+### AI/ML Integration
+
+```
+LLM:              Claude claude-sonnet-4-20250514 via Anthropic API
+Agents:           MASTERLINC, HEALTHCARELINC, CLINICALLINC, COMPLIANCELINC
+Voice:            expo-speech + Web Speech API bridge
+Language:         Arabic (primary) + English bilingual
+```
+
+-----
+
+## 🎨 DESIGN SYSTEM
+
+### Brand Colors
+
+```typescript
+const BrainSAITColors = {
+  midnightBlue:    '#1a365d',  // Primary backgrounds
+  medicalBlue:     '#2b6cb8',  // Primary actions, links
+  signalTeal:      '#0ea5e9',  // Accents, highlights
+  deepOrange:      '#ea580c',  // Alerts, urgent actions
+  professionalGray:'#64748b',  // Secondary text
+  
+  // Semantic
+  success:         '#16a34a',
+  warning:         '#d97706',
+  error:           '#dc2626',
+  
+  // Glass morphism
+  glassBg:         'rgba(26, 54, 93, 0.7)',
+  glassBorder:     'rgba(14, 165, 233, 0.3)',
+  glassBlur:       20,
+};
+```
+
+### Typography
+
+```typescript
+const Fonts = {
+  arabic:   'IBMPlexSansArabic',  // RTL Arabic text
+  latin:    'Inter',               // LTR English text
+  sizes: {
+    xs: 12, sm: 14, base: 16,
+    lg: 18, xl: 20, '2xl': 24,
+    '3xl': 30, '4xl': 36
+  }
+};
+```
+
+### Component Pattern (All components must follow)
+
+```typescript
+interface BrainSAITComponentProps {
+  userRole: 'patient' | 'provider' | 'insurer' | 'admin' | 'auditor';
+  bilingualContent: { ar: string; en: string };
+  complianceLevel: 'standard' | 'hipaa' | 'nphies';
+  onAuditLog?: (action: string) => void;
+}
+```
+
+### Glass Morphism Card Pattern
+
+```typescript
+// Standard glass card style
+const glassCard = {
+  backgroundColor: 'rgba(26, 54, 93, 0.7)',
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: 'rgba(14, 165, 233, 0.3)',
+  // Apply BlurView from expo-blur underneath
+  overflow: 'hidden',
+  padding: 20,
+};
+```
+
+-----
+
+## 📱 APP SCREENS & NAVIGATION
+
+### File Structure (Expo Router)
+
+```
+app/
+├── (auth)/
+│   ├── login.tsx              # Absher/eID + username/password
+│   ├── biometric.tsx          # Face ID / fingerprint
+│   └── register.tsx           # New user registration
+├── (tabs)/
+│   ├── _layout.tsx            # Bottom tab navigator
+│   ├── dashboard.tsx          # Home dashboard
+│   ├── eligibility.tsx        # Insurance eligibility check
+│   ├── claims/
+│   │   ├── index.tsx          # Claims list
+│   │   ├── new.tsx            # Submit new claim
+│   │   └── [id].tsx           # Claim detail/status
+│   ├── prior-auth/
+│   │   ├── index.tsx          # Prior auth list
+│   │   ├── new.tsx            # New prior auth request
+│   │   └── [id].tsx           # Prior auth detail
+│   └── wallet.tsx             # Digital health wallet
+├── (modals)/
+│   ├── notifications.tsx      # Push notifications
+│   ├── ai-assistant.tsx       # Basma AI voice assistant
+│   └── scan-document.tsx      # Camera/document scanner
+├── profile/
+│   ├── index.tsx              # User profile
+│   ├── coverage.tsx           # Coverage details
+│   ├── benefits.tsx           # Benefits breakdown
+│   └── settings.tsx           # App settings
+└── _layout.tsx                # Root layout with auth guard
+```
+
+-----
+
+## 🔐 SCREEN 1: Authentication (`app/(auth)/login.tsx`)
+
+```typescript
+/**
+ * BRAINSAIT: HIPAA + Arabic RTL
+ * MEDICAL: FHIR Patient resource auth
+ * NEURAL: Brand colors + morphism
+ * BILINGUAL: Dual-language login UI
+ */
+
+Features to implement:
+- Dual-language toggle (Arabic RTL / English LTR) in header
+- Glass morphism card with BrainSAIT midnight blue background
+- Absher/eID integration button (primary CTA, Signal Teal)
+- Username + password fallback form
+- Biometric auth prompt on return visits
+- JWT token storage in expo-secure-store
+- Failed login audit logging
+- Loading states with Lottie animation
+- Error messages bilingual (Arabic + English)
+- "Remember me" toggle
+- Forgot password flow link
+
+API Integration:
+POST /api/v1/auth/login
+Body: { username, password, deviceId, biometricToken? }
+Response: { accessToken, refreshToken, user: FHIRPatient, expiresIn }
+
+Validation (Zod):
+- username: min 3 chars, alphanumeric
+- password: min 8 chars, complexity rules
+- Sanitize all inputs before submission
+```
+
+-----
+
+## 🏠 SCREEN 2: Dashboard (`app/(tabs)/dashboard.tsx`)
+
+```typescript
+/**
+ * BRAINSAIT: Role-aware dashboard
+ * AGENT: AI workflow summary cards
+ * NEURAL: Mesh gradient hero section
+ */
+
+Layout Sections:
+
+1. HERO SECTION
+   - Animated mesh gradient background (midnight blue → medical blue → signal teal)
+   - Greeting: "مرحباً، [اسم المستخدم]" / "Welcome, [Name]"
+   - Current date in Arabic/Hijri + Gregorian
+   - Active coverage status badge (green/amber/red)
+
+2. QUICK ACTIONS ROW (horizontal scroll)
+   - Check Eligibility (icon: shield-check)
+   - New Claim (icon: file-plus)
+   - Prior Auth (icon: clipboard-check)
+   - My Benefits (icon: star)
+   - AI Assistant (icon: brain)
+
+3. ACTIVE COVERAGE CARD (glass morphism)
+   - Insurance provider logo
+   - Policy number
+   - Coverage period (start → end)
+   - Deductible used vs. total
+   - Animated progress ring (Signal Teal)
+   - Copay and coinsurance display
+
+4. RECENT ACTIVITY (list)
+   - Last 5 claims with status chips (Submitted/Processing/Approved/Rejected)
+   - Status color: success/warning/error mapping
+   - Tap to navigate to claim detail
+
+5. AI INSIGHTS CARD
+   - CLINICALLINC recommendations
+   - Upcoming renewal alerts
+   - Fraud risk warnings (if role = auditor)
+   - Tap to open AI assistant modal
+
+6. NETWORK PROVIDERS MAP
+   - Nearby in-network providers
+   - Distance and specialty filter
+   - Uses expo-location + mapping
+
+API Calls:
+GET /api/v1/fhir/Coverage?patient={id}&status=active
+GET /api/v1/claims?patient={id}&_count=5&_sort=-date
+GET /api/v1/eligibility/benefits/{memberId}
+```
+
+-----
+
+## ✅ SCREEN 3: Eligibility Check (`app/(tabs)/eligibility.tsx`)
+
+```typescript
+/**
+ * MEDICAL: FHIR Coverage + EligibilityRequest resources
+ * BRAINSAIT: <900ms response target
+ */
+
+Features:
+- Search by: Member ID, National ID, QR code scan
+- Real-time eligibility result (< 900ms target — show timer)
+- Coverage breakdown accordion:
+  * Medical/Dental/Vision/Pharmacy
+  * Deductibles (individual/family)
+  * Out-of-pocket maximums
+  * Network tier (in/out of network)
+  * Copay by service type
+  * Prior auth requirements list
+- Benefit utilization progress bars (animated)
+- Service-specific eligibility check:
+  * Enter procedure code (CPT/ACHI)
+  * See if pre-auth required
+  * Coverage percentage for that service
+- Save/share eligibility results (PDF export)
+- Offline caching with 5-minute TTL indicator
+- Response time display badge (Signal Teal if < 900ms, Deep Orange if > 900ms)
+
+FHIR Resources:
+EligibilityRequest → EligibilityResponse
+Coverage resource display
+Patient demographics verification
+
+API:
+POST /api/v1/fhir/CoverageEligibilityRequest
+GET  /api/v1/eligibility/{memberId}/benefits
+GET  /api/v1/eligibility/{memberId}/service/{code}
+```
+
+-----
+
+## 📄 SCREEN 4: Claims Management (`app/(tabs)/claims/`)
+
+### Claims List (`index.tsx`)
+
+```typescript
+Features:
+- Filter tabs: All | Submitted | In Review | Approved | Rejected | Appealed
+- Search by claim number, date, provider
+- Claim cards with:
+  * Claim ID (masked for privacy)
+  * Service date + provider name
+  * Amount claimed vs. approved
+  * Status chip with color coding
+  * Processing timeline indicator
+- Pull-to-refresh
+- Infinite scroll pagination
+- Swipe actions: View Details | Download EOB
+
+API:
+GET /api/v1/fhir/Claim?patient={id}&status={filter}&_count=20&_offset={n}
+```
+
+### New Claim (`new.tsx`)
+
+```typescript
+/**
+ * MEDICAL: FHIR Claim resource construction
+ * BRAINSAIT: Idempotency + audit logging
+ */
+
+Multi-step form wizard:
+Step 1: Provider Selection
+  - Search in-network providers by name/NPI/specialty
+  - Facility vs. practitioner type
+  - Service location address
+
+Step 2: Service Details
+  - Service/encounter date
+  - Principal diagnosis (ICD-10-AM code lookup with Arabic descriptions)
+  - Procedure codes (ACHI/CPT with descriptions)
+  - Supporting codes (secondary diagnoses)
+  - Place of service
+
+Step 3: Charges
+  - Line items with quantity + unit cost
+  - Tax and fee breakdown
+  - Total charges calculation
+  - Prior auth reference number (if applicable)
+
+Step 4: Attachments
+  - Camera scan or upload:
+    * Referral letter
+    * Lab results
+    * Radiology reports
+    * Prescriptions
+  - Document type tagging
+  - FHIR DocumentReference creation
+
+Step 5: Review & Submit
+  - Full claim summary in bilingual format
+  - Estimated processing time
+  - Idempotency key generation (prevents duplicates)
+  - Consent acknowledgment checkbox
+  - Submit with haptic feedback
+
+Post-submission:
+  - Real-time status WebSocket subscription
+  - Push notification enrollment for updates
+  - Download draft as PDF
+
+API:
+POST /api/v1/fhir/Claim (with idempotency key header)
+POST /api/v1/fhir/DocumentReference (attachments)
+```
+
+### Claim Detail (`[id].tsx`)
+
+```typescript
+Features:
+- Complete claim timeline (Submitted → Processing → Adjudicated → Paid)
+- EOB (Explanation of Benefits) breakdown:
+  * Billed amount
+  * Contractual adjustment
+  * Plan paid
+  * Patient responsibility
+  * Denial reason (if applicable, with appeal option)
+- Appeal workflow:
+  * Reason selection (billing error, medical necessity, coding error)
+  * Supporting document upload
+  * Appeal submission tracking
+- Download EOB as PDF
+- Chat with CLINICALLINC AI about this claim
+- Share with provider (secure link)
+```
+
+-----
+
+## 📋 SCREEN 5: Prior Authorization (`app/(tabs)/prior-auth/`)
+
+```typescript
+/**
+ * AGENT: CLINICALLINC AI decision support
+ * MEDICAL: FHIR PriorAuthorization resource
+ * BRAINSAIT: 90% auto-approval target
+ */
+
+New Prior Auth Request:
+1. Clinical Information
+   - Requesting provider (NPI lookup)
+   - Referring provider (optional)
+   - Service type: Inpatient | Outpatient | Procedure | DME | Medication
+
+2. Clinical Justification
+   - Primary diagnosis (ICD-10-AM)
+   - Clinical notes (free text with Arabic support)
+   - Supporting clinical evidence
+   - Urgency level: Routine | Urgent | Emergency
+
+3. Requested Services
+   - Procedure codes with descriptions
+   - Facility/setting
+   - Requested dates
+   - Quantity/duration
+
+4. AI Pre-Assessment (CLINICALLINC)
+   - Real-time ML approval probability score
+   - Missing information alerts
+   - Suggested supporting documentation
+   - Similar approved cases reference
+   - Medical necessity criteria checklist
+
+5. Submission & Tracking
+   - Auto-approval if probability > 0.95 (< 60 seconds)
+   - Manual review queue for < 0.95
+   - Real-time status: Pending → In Review → Approved/Denied
+   - Push notifications for status changes
+   - Denial management + appeal workflow
+
+API:
+POST /api/v1/fhir/ClaimResponse (prior auth)
+GET  /api/v1/prior-auth/{id}/status
+POST /api/v1/prior-auth/{id}/appeal
+GET  /api/v1/ai/prior-auth/predict (CLINICALLINC)
+```
+
+-----
+
+## 💳 SCREEN 6: Digital Health Wallet (`app/(tabs)/wallet.tsx`)
+
+```typescript
+/**
+ * NEURAL: Premium wallet UI with blockchain badge
+ * BRAINSAIT: Blockchain-anchored health records
+ */
+
+Sections:
+
+1. WALLET HEADER
+   - Digital insurance card (animated flip: front/back)
+   - Front: Member name, ID, group, plan name, payer logo
+   - Back: Coverage dates, network, customer service, QR code
+   - Share card functionality (secure token-based link)
+
+2. HEALTH DOCUMENTS VAULT
+   - Uploaded health documents (FHIR DocumentReference)
+   - Document categories: Lab Results, Imaging, Prescriptions, Referrals
+   - Blockchain verification badge with hash
+   - Audit trail: who accessed what and when
+   - OCR-extracted text (searchable)
+
+3. PAYMENT HISTORY
+   - EOBs and payment records
+   - Sorted by date with filter
+   - Total spent YTD vs. out-of-pocket max
+   - Animated donut chart for spending breakdown
+
+4. BENEFITS TRACKER
+   - Visual progress for each benefit bucket
+   - Deductible: $X of $Y used (animated bar)
+   - Out-of-pocket max tracker
+   - Benefit period countdown
+   - Preventive care checklist (annual wellness, screenings)
+
+5. DIGITAL HEALTH RECORD
+   - FHIR Patient summary
+   - Active conditions, medications, allergies
+   - Immunization history
+   - Recent vital signs (HealthKit integration on iOS)
+   - Emergency contacts
+
+API:
+GET /api/v1/wallet/{memberId}
+GET /api/v1/fhir/DocumentReference?patient={id}
+GET /api/v1/blockchain/verify/{documentHash}
+GET /api/v1/wallet/benefits/{memberId}/utilization
+```
+
+-----
+
+## 🤖 AI ASSISTANT MODAL (`app/(modals)/ai-assistant.tsx`)
+
+```typescript
+/**
+ * AGENT: Basma AI healthcare secretary
+ * BILINGUAL: Arabic voice + English fallback
+ * BRAINSAIT: Multi-agent orchestration (MASTERLINC → HEALTHCARELINC)
+ */
+
+Features:
+- Wake word: "يا بسمة" (Ya Basma) for Arabic | "Hey Basma" for English
+- Voice-to-text using expo-speech + device STT
+- Text-to-speech response in selected language
+- Contextual chat interface (chat bubble design)
+- Suggested prompts:
+  * "ما هو رصيد تأميني؟" / "What's my insurance balance?"
+  * "هل يغطي التأمين عملية الركبة؟" / "Is knee surgery covered?"
+  * "حالة مطالبتي الأخيرة" / "Status of my latest claim"
+  * "أحتاج موعد مع طبيب عيون" / "I need an ophthalmologist appointment"
+
+- Agents routing:
+  * Coverage questions → HEALTHCARELINC
+  * Clinical questions → CLINICALLINC
+  * Compliance/audit → COMPLIANCELINC
+  * General orchestration → MASTERLINC
+
+- Response format:
+  * Conversational text (bilingual)
+  * Structured data cards (embedded in chat)
+  * Action buttons ("View Claim", "Start Prior Auth", "Call Provider")
+  * Voice playback with speed control
+
+Claude API Integration:
+POST https://api.anthropic.com/v1/messages
+Model: claude-sonnet-4-20250514
+System: Healthcare AI assistant with FHIR context, NPHIES compliance, bilingual Arabic/English
+Include: Patient FHIR context, active coverage, recent claims in system prompt
+```
+
+-----
+
+## 👤 PROFILE & SETTINGS (`app/profile/`)
+
+```typescript
+Profile Sections:
+
+PERSONAL INFORMATION
+- Name (Arabic + English)
+- National ID (masked: ****XXXX)
+- Date of birth
+- Contact: phone, email, address
+- Emergency contacts
+
+COVERAGE DETAILS  
+- Active policies list
+- Policy documents download
+- Coverage comparison tool
+- Renewal date alerts
+
+SECURITY SETTINGS
+- Biometric authentication toggle
+- PIN code setup
+- Active sessions management
+- Login history audit log
+- Two-factor authentication
+
+NOTIFICATION PREFERENCES
+- Claim status updates
+- Prior auth decisions
+- Coverage renewal alerts
+- AI health recommendations
+- Language preference (AR/EN)
+- Notification channel: Push | SMS | Email
+
+LANGUAGE & ACCESSIBILITY
+- Language toggle: Arabic (RTL) / English (LTR)
+- Text size: Small | Medium | Large | Extra Large
+- High contrast mode
+- Screen reader optimization (WCAG 2.1 AA)
+
+DATA PRIVACY
+- View audit log of PHI access
+- Data export (FHIR Bundle download)
+- Consent management
+- Data deletion request (PDPL compliance)
+```
+
+-----
+
+## 🔧 SHARED COMPONENTS LIBRARY
+
+### `components/ui/GlassCard.tsx`
+
+```typescript
+// Glass morphism container used throughout the app
+// Props: children, variant ('default'|'elevated'|'danger'), padding
+// Uses expo-blur BlurView + semi-transparent overlay
+```
+
+### `components/ui/BilingualText.tsx`
+
+```typescript
+// Renders Arabic or English text based on current locale
+// Automatically applies RTL/LTR text alignment
+// Props: ar (Arabic string), en (English string), style
+```
+
+### `components/ui/StatusChip.tsx`
+
+```typescript
+// Colored status indicator chips
+// Statuses: active|pending|approved|rejected|processing|appealed
+// Bilingual label support
+```
+
+### `components/ui/FHIRResourceCard.tsx`
+
+```typescript
+// Generic FHIR resource display card
+// Supports: Patient, Coverage, Claim, ClaimResponse, MedicationRequest
+// Auto-renders key fields based on resource type
+// Includes audit log trigger on view
+```
+
+### `components/ui/LoadingOverlay.tsx`
+
+```typescript
+// Full-screen loading with Lottie animation
+// Bilingual loading message
+// Progress percentage option
+// BrainSAIT branding
+```
+
+### `components/forms/DiagnosisCodePicker.tsx`
+
+```typescript
+// ICD-10-AM code search with Arabic descriptions
+// Typeahead search with debounce
+// Recent codes history
+// Favorites list
+// SNOMED CT mapping display
+```
+
+### `components/forms/ProcedureCodePicker.tsx`
+
+```typescript
+// ACHI/CPT code search
+// Prior auth requirement indicator
+// Coverage percentage preview
+// Arabic + English descriptions
+```
+
+### `hooks/useEligibility.ts`
+
+```typescript
+// React Query hook for eligibility checks
+// Handles caching (5-min TTL), loading, error states
+// Returns: eligibilityData, isLoading, error, refetch, responseTime
+// Tracks P99 latency for monitoring
+```
+
+### `hooks/useFHIR.ts`
+
+```typescript
+// Generic FHIR resource CRUD hook
+// Supports all FHIR R4 resources
+// Offline-first with WatermelonDB sync
+// Conflict resolution for concurrent edits
+```
+
+### `hooks/useAuditLog.ts`
+
+```typescript
+// PHI access audit logging
+// Every PHI view/edit automatically logged
+// Fields: userId, action, resourceType, resourceId, timestamp, ipAddress
+// Sends to /api/v1/audit endpoint
+```
+
+-----
+
+## 🌐 API SERVICE LAYER (`services/`)
+
+### `services/api.ts` — Base API Client
+
+```typescript
+Configuration:
+- Base URL: process.env.EXPO_PUBLIC_API_URL
+- Auth: Bearer token injection from SecureStore
+- Auto token refresh on 401
+- Request/response interceptors for audit logging
+- Retry logic: 3 attempts with exponential backoff
+- Timeout: 10 seconds (2 seconds for eligibility)
+- Bilingual error message mapping
+```
+
+### `services/fhir.ts` — FHIR Resource Operations
+
+```typescript
+Endpoints:
+- getPatient(id)
+- getCoverage(patientId)
+- checkEligibility(request: EligibilityRequest)
+- submitClaim(claim: FHIRClaim)
+- getClaimStatus(claimId)
+- submitPriorAuth(request: PriorAuthRequest)
+- getPriorAuthStatus(authId)
+- uploadDocument(file, metadata)
+- searchProviders(query, location)
+```
+
+### `services/ai.ts` — AI Agent Services
+
+```typescript
+Agents:
+- askBasma(message, context, language)  → Claude claude-sonnet-4-20250514
+- getPriorAuthPrediction(request)        → CLINICALLINC
+- getFraudRisk(claimId)                  → COMPLIANCELINC
+- getHealthRecommendations(patientId)    → HEALTHCARELINC
+- orchestrate(task, params)              → MASTERLINC
+```
+
+### `services/blockchain.ts` — Document Verification
+
+```typescript
+- verifyDocument(hash): boolean
+- anchorDocument(documentId, hash)
+- getVerificationBadge(hash): VerificationResult
+```
+
+-----
+
+## 🔔 PUSH NOTIFICATIONS SETUP
+
+```typescript
+// Notification types and their bilingual templates:
+
+CLAIM_SUBMITTED:
+  AR: "تم استلام مطالبتك #{{claimId}} بنجاح"
+  EN: "Your claim #{{claimId}} has been received"
+
+CLAIM_APPROVED:
+  AR: "تمت الموافقة على مطالبتك #{{claimId}} بمبلغ {{amount}}"
+  EN: "Claim #{{claimId}} approved for {{amount}}"
+
+CLAIM_DENIED:
+  AR: "تم رفض مطالبتك #{{claimId}}. انقر للاستئناف"
+  EN: "Claim #{{claimId}} denied. Tap to appeal"
+
+PRIOR_AUTH_APPROVED:
+  AR: "تمت الموافقة على طلب التفويض المسبق خلال {{seconds}} ثانية"
+  EN: "Prior auth approved in {{seconds}} seconds"
+
+COVERAGE_RENEWAL:
+  AR: "تأمينك ينتهي خلال 30 يوماً. جدد الآن"
+  EN: "Your coverage expires in 30 days. Renew now"
+
+BENEFIT_ALERT:
+  AR: "لقد استخدمت 80% من استحقاقاتك السنوية"
+  EN: "You've used 80% of your annual benefits"
+```
+
+-----
+
+## 🌍 INTERNATIONALIZATION (`i18n/`)
+
+```typescript
+Structure:
+i18n/
+├── ar.json    # Arabic translations (primary)
+├── en.json    # English translations
+└── index.ts  # i18next configuration
+
+Key namespaces:
+- common: buttons, labels, status messages
+- auth: login, register, biometric prompts
+- claims: claim workflow, status labels
+- eligibility: coverage, benefits, network
+- priorAuth: PA workflow, clinical terms
+- errors: error messages and recovery instructions
+- accessibility: screen reader labels
+
+RTL Configuration:
+- Detect locale → set I18nManager.forceRTL(locale === 'ar')
+- All flex directions: 'row' + RTL flipping via I18nManager
+- Text alignment: automatic via RTL setting
+- Icons: mirror horizontally when RTL (chevrons, arrows)
+- Dates: Hijri calendar option for Arabic locale
+```
+
+-----
+
+## 🔒 SECURITY IMPLEMENTATION
+
+```typescript
+// PHI Data Handling Rules:
+1. Never log PHI to console in production
+2. Mask PHI in error messages (show last 4 digits max)
+3. Store all tokens in expo-secure-store (not AsyncStorage)
+4. Clear PHI from memory on app background
+5. Certificate pinning for API connections
+6. Jailbreak/root detection using expo-device
+7. Screenshot prevention on sensitive screens
+8. Biometric re-authentication for wallet/documents
+
+// Audit Log Schema (every PHI access):
+interface AuditEvent {
+  eventId: string;           // UUID
+  timestamp: string;         // ISO 8601
+  userId: string;            // Authenticated user
+  userRole: string;          // patient|provider|admin
+  action: string;            // VIEW|CREATE|UPDATE|DELETE
+  resourceType: string;      // FHIR resource type
+  resourceId: string;        // Resource ID (masked if needed)
+  outcome: string;           // success|failure|error
+  deviceId: string;          // Hashed device identifier
+  ipAddress: string;         // Client IP
+  sessionId: string;         // Current session
+}
+```
+
+-----
+
+## 📦 REPLIT CONFIGURATION
+
+### `package.json` — Key Dependencies
+
+```json
+{
+  "dependencies": {
+    "expo": "~50.0.0",
+    "expo-router": "~3.4.0",
+    "react-native": "0.73.x",
+    "react-native-reanimated": "~3.6.0",
+    "expo-blur": "~12.9.0",
+    "expo-secure-store": "~12.8.0",
+    "expo-local-authentication": "~13.8.0",
+    "expo-notifications": "~0.27.0",
+    "expo-camera": "~14.1.0",
+    "expo-location": "~16.5.0",
+    "expo-speech": "~12.4.0",
+    "@tanstack/react-query": "^5.17.0",
+    "zustand": "^4.4.7",
+    "react-hook-form": "^7.49.0",
+    "zod": "^3.22.4",
+    "i18next": "^23.7.6",
+    "react-i18next": "^14.0.0",
+    "@shopify/flash-list": "^1.6.3",
+    "lottie-react-native": "6.4.1",
+    "react-native-svg": "^14.1.0",
+    "@nozbe/watermelondb": "^0.27.1"
+  }
+}
+```
+
+### `.env.example`
+
+```bash
+EXPO_PUBLIC_API_URL=https://api.brainsait.com/v1
+EXPO_PUBLIC_FHIR_BASE=https://fhir.brainsait.com/r4
+EXPO_PUBLIC_WS_URL=wss://ws.brainsait.com
+EXPO_PUBLIC_ANTHROPIC_KEY=sk-ant-xxxx
+EXPO_PUBLIC_ENVIRONMENT=development
+EXPO_PUBLIC_SENTRY_DSN=https://xxxx@sentry.io/xxxx
+EXPO_PUBLIC_BLOCKCHAIN_NODE=https://chain.brainsait.com
+```
+
+### `app.json` — Expo Config
+
+```json
+{
+  "expo": {
+    "name": "BrainSAIT",
+    "slug": "brainsait",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "brainsait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.brainsait.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "للتقاط المستندات الطبية",
+        "NSFaceIDUsageDescription": "للمصادقة الآمنة",
+        "NSLocationWhenInUseUsageDescription": "للبحث عن مقدمي الخدمات القريبين"
+      }
+    },
+    "android": {
+      "package": "com.brainsait.app",
+      "adaptiveIcon": { "foregroundImage": "./assets/icon-fg.png" },
+      "permissions": ["CAMERA", "RECORD_AUDIO", "ACCESS_FINE_LOCATION"]
+    }
+  }
+}
+```
+
+-----
+
+## 🧪 TESTING REQUIREMENTS
+
+```typescript
+Unit Tests (Jest + Testing Library):
+- All FHIR resource validation logic
+- Zod schema validation for all forms
+- Eligibility calculation functions
+- Claim status machine transitions
+- Bilingual text rendering
+- RTL/LTR layout switching
+- Audit log generation
+
+Integration Tests:
+- Full authentication flow
+- End-to-end claim submission
+- Eligibility check with mock API (< 900ms)
+- Prior auth ML prediction integration
+- Push notification delivery
+- Offline mode + sync
+
+Accessibility Tests:
+- WCAG 2.1 AA compliance
+- Screen reader (VoiceOver/TalkBack) navigation
+- Minimum touch target 44×44pt
+- Color contrast ratio ≥ 4.5:1
+- RTL navigation order
+
+Performance Tests:
+- App cold start < 2.5 seconds
+- Screen transition < 300ms
+- List scroll 60 fps (1000+ items)
+- Eligibility API < 900ms P99
+- Memory usage < 100 MB peak
+```
+
+-----
+
+## 🚀 DEVELOPMENT PHASES IN REPLIT
+
+### Phase 1 (Week 1-2): Foundation
+
+```
+✅ Expo project setup with TypeScript
+✅ Navigation structure (Expo Router)
+✅ Design system (colors, typography, glass morphism)
+✅ Authentication screens (login, biometric)
+✅ API service layer with FHIR client
+✅ i18n setup (AR/EN) with RTL support
+✅ Secure storage implementation
+```
+
+### Phase 2 (Week 3-4): Core Features
+
+```
+✅ Dashboard with live data
+✅ Eligibility check flow (< 900ms target)
+✅ Claims list and detail views
+✅ New claim submission wizard
+✅ Digital health wallet
+✅ Push notifications setup
+```
+
+### Phase 3 (Week 5-6): Intelligence Layer
+
+```
+✅ Prior authorization with ML scoring
+✅ Basma AI assistant (voice + text)
+✅ Claude claude-sonnet-4-20250514 integration
+✅ CLINICALLINC agent routing
+✅ Real-time WebSocket subscriptions
+✅ Fraud risk indicators (auditor role)
+```
+
+### Phase 4 (Week 7-8): Polish & Compliance
+
+```
+✅ Full audit logging across all PHI access
+✅ Blockchain document verification
+✅ Performance optimization (60fps, <100MB)
+✅ Accessibility audit (WCAG 2.1 AA)
+✅ Security hardening (cert pinning, jailbreak detection)
+✅ App Store + Google Play preparation
+```
+
+-----
+
+## 📊 MONITORING & ANALYTICS
+
+```typescript
+Metrics to track:
+- Eligibility check P99 latency (target < 900ms)
+- App crash rate (target < 0.1%)
+- API error rates by endpoint
+- Prior auth auto-approval rate
+- User session duration
+- Feature adoption by user role
+- Bilingual usage split (AR vs EN)
+
+Tools:
+- Sentry: Error tracking + performance
+- Expo Analytics: App store metrics
+- Custom: Healthcare-specific KPIs via /api/v1/analytics
+```
+
+-----
+
+## ⚠️ CRITICAL COMPLIANCE RULES
+
+```
+1. NEVER store National ID numbers unencrypted
+2. NEVER log full claim amounts in client-side logs
+3. ALWAYS mask member IDs in URLs (use internal references)
+4. ALWAYS request minimal permissions (camera only when scanning)
+5. ALWAYS show privacy notice before first PHI collection
+6. ALWAYS provide Arabic-language consent forms
+7. ALWAYS implement 10-year audit log retention (server-side)
+8. ALWAYS encrypt documents before upload
+9. NEVER cache PHI beyond session without explicit consent
+10. ALWAYS comply with PDPL (Saudi Personal Data Protection Law)
+```
+
+-----
+
+## 🔗 BACKEND API REFERENCE
+
+```
+Base URL: https://api.brainsait.com/v1
+
+Authentication:
+POST /auth/login              → JWT token pair
+POST /auth/refresh            → Refresh access token
+POST /auth/logout             → Revoke tokens
+POST /auth/biometric          → Biometric auth
+
+FHIR Resources:
+GET  /fhir/Patient/{id}
+GET  /fhir/Coverage?patient={id}
+POST /fhir/CoverageEligibilityRequest
+GET  /fhir/Claim?patient={id}
+POST /fhir/Claim
+GET  /fhir/Claim/{id}
+POST /fhir/ClaimResponse (prior auth)
+GET  /fhir/DocumentReference?patient={id}
+POST /fhir/DocumentReference
+
+Eligibility:
+GET  /eligibility/{memberId}
+GET  /eligibility/{memberId}/benefits
+GET  /eligibility/{memberId}/service/{code}
+
+Prior Auth:
+POST /prior-auth
+GET  /prior-auth/{id}
+POST /prior-auth/{id}/appeal
+
+AI Services:
+POST /ai/chat                 → Basma assistant
+POST /ai/prior-auth/predict   → Approval probability
+GET  /ai/recommendations/{id} → Health recommendations
+
+Wallet:
+GET  /wallet/{memberId}
+GET  /wallet/documents/{id}
+POST /blockchain/verify
+
+Audit:
+POST /audit/events            → Log PHI access
+GET  /audit/events?patient={id} → Audit trail (admin only)
+```
+
+-----
+
+## 🏆 SUCCESS CRITERIA
+
+|Metric                  |Target      |Measurement         |
+|------------------------|------------|--------------------|
+|App Store Rating        |≥ 4.5 stars |App Store Connect   |
+|Crash-free Sessions     |≥ 99.9%     |Sentry              |
+|Eligibility P99         |< 900ms     |Custom metrics      |
+|Prior Auth Auto-Approval|90% (Year 3)|Analytics dashboard |
+|FHIR Compliance Score   |≥ 70%       |Touchstone validator|
+|Accessibility Score     |WCAG 2.1 AA |Automated audit     |
+|Arabic User Satisfaction|≥ 4.5/5     |In-app survey       |
+|Security Vulnerabilities|0 critical  |SAST/DAST scan      |
+
+-----
+
+*Built with ❤️ for Saudi Arabia’s digital healthcare transformation*  
+*BrainSAIT © 2025 — NPHIES Aligned | Vision 2030 Compliant | HIPAA + PDPL Ready*

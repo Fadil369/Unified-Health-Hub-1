@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 import { BenefitBar } from '@/components/BenefitBar';
 import { ProgressRing } from '@/components/ProgressRing';
+import { StatusChip } from '@/components/StatusChip';
 
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
@@ -20,6 +21,10 @@ export default function WalletScreen() {
 
   const { data: coverageData, isLoading } = useQuery({
     queryKey: ['/api/coverage', user?.memberId || 'MEM-2024-001'],
+  });
+
+  const { data: paymentData } = useQuery({
+    queryKey: ['/api/payments/history'],
   });
 
   const coverage = coverageData ? {
@@ -181,6 +186,55 @@ export default function WalletScreen() {
             </View>
           ))}
         </GlassCard>
+
+        {(paymentData?.payments || []).length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>{t('سجل المدفوعات', 'Payment History')}</Text>
+            {paymentData?.summary && (
+              <GlassCard style={styles.paymentSummaryCard}>
+                <View style={styles.paymentSummaryRow}>
+                  <View style={styles.paymentStat}>
+                    <Text style={styles.paymentStatValue}>{paymentData.summary.totalPaid?.toFixed(0) || '0'}</Text>
+                    <Text style={styles.paymentStatUnit}>SAR</Text>
+                    <Text style={styles.paymentStatLabel}>{t('مدفوع', 'Paid')}</Text>
+                  </View>
+                  <View style={styles.paymentStatDivider} />
+                  <View style={styles.paymentStat}>
+                    <Text style={styles.paymentStatValue}>{paymentData.summary.totalClaims || 0}</Text>
+                    <Text style={styles.paymentStatLabel}>{t('معاملة', 'Transactions')}</Text>
+                  </View>
+                  <View style={styles.paymentStatDivider} />
+                  <View style={styles.paymentStat}>
+                    <Text style={[styles.paymentStatValue, paymentData.summary.pendingCount > 0 && { color: '#f59e0b' }]}>
+                      {paymentData.summary.pendingCount || 0}
+                    </Text>
+                    <Text style={styles.paymentStatLabel}>{t('قيد الانتظار', 'Pending')}</Text>
+                  </View>
+                </View>
+              </GlassCard>
+            )}
+            {paymentData.payments.slice(0, 5).map((p: any) => (
+              <GlassCard key={p.id} variant="surface" style={styles.docCard} padding={14}>
+                <View style={styles.docRow}>
+                  <View style={[styles.docIcon, { backgroundColor: p.status === 'completed' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)' }]}>
+                    <Ionicons
+                      name={p.status === 'completed' ? 'checkmark-circle' : 'time'}
+                      size={18}
+                      color={p.status === 'completed' ? Colors.success : '#f59e0b'}
+                    />
+                  </View>
+                  <View style={styles.docInfo}>
+                    <Text style={styles.docName}>{p.claim_number || t('دفعة', 'Payment')}</Text>
+                    <Text style={styles.docDate}>
+                      {p.amount ? `${parseFloat(p.amount).toFixed(2)} SAR` : ''} · {p.status}
+                    </Text>
+                  </View>
+                  <StatusChip status={p.status === 'completed' ? 'approved' : p.status === 'failed' ? 'rejected' : 'submitted'} />
+                </View>
+              </GlassCard>
+            ))}
+          </>
+        )}
 
         <Text style={styles.sectionTitle}>{t('المستندات الصحية', 'Health Documents')}</Text>
         {documents.map(doc => (
@@ -360,5 +414,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: 'Inter_500Medium',
     color: Colors.success,
+  },
+  paymentSummaryCard: { marginBottom: 12 },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  paymentStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  paymentStatValue: {
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.textPrimary,
+  },
+  paymentStatUnit: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textSecondary,
+  },
+  paymentStatLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  paymentStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
 });

@@ -310,7 +310,22 @@ export default function NewClaimScreen() {
                 <Text style={styles.reviewLabel}>{t('المبلغ', 'Amount')}</Text>
                 <Text style={[styles.reviewValue, { color: Colors.signalTeal }]}>{amount} SAR</Text>
               </View>
+              <View style={styles.reviewRow}>
+                <Text style={styles.reviewLabel}>{t('المبلغ المشترك (20%)', 'Est. Copay (20%)')}</Text>
+                <Text style={[styles.reviewValue, { color: Colors.deepOrange || '#f97316' }]}>
+                  {(parseFloat(amount || '0') * 0.2).toFixed(2)} SAR
+                </Text>
+              </View>
             </GlassCard>
+            <View style={styles.copayNotice}>
+              <Ionicons name="information-circle-outline" size={16} color={Colors.signalTeal} />
+              <Text style={styles.copayNoticeText}>
+                {t(
+                  'سيتم احتساب المبلغ المشترك بنسبة 20% ويمكنك دفعه عبر Stripe بعد الإرسال',
+                  'A 20% copay will be calculated. You can pay via Stripe after submission.'
+                )}
+              </Text>
+            </View>
           </View>
         );
     }
@@ -573,6 +588,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
     color: Colors.textPrimary,
+  },
+  copayNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 4,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(14, 165, 233, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(14, 165, 233, 0.15)',
+  },
+  copayNoticeText: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textSecondary,
+    flex: 1,
   },
   bottomBar: {
     position: 'absolute',

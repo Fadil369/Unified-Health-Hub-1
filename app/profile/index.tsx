@@ -1,19 +1,32 @@
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, Image, TextInput, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
+import { apiRequest, getApiUrl } from '@/lib/query-client';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { t, language } = useLanguage();
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
+  const [isEditing, setIsEditing] = useState(false);
+  const [editNameEn, setEditNameEn] = useState(user?.nameEn || '');
+  const [editNameAr, setEditNameAr] = useState(user?.nameAr || '');
+  const [editPhone, setEditPhone] = useState(user?.phone || '');
+  const [editNationalId, setEditNationalId] = useState(user?.nationalId || '');
+
+  const { data: paymentData } = useQuery({
+    queryKey: ['/api/payments/history'],
+    enabled: !!user?.memberId,
+  });
 
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -21,11 +34,30 @@ export default function ProfileScreen() {
     router.replace('/(auth)/login');
   };
 
+  const handleSaveProfile = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const success = await updateProfile({
+      nameEn: editNameEn,
+      nameAr: editNameAr,
+      phone: editPhone,
+      nationalId: editNationalId,
+    });
+    if (success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setIsEditing(false);
+    } else {
+      Alert.alert(t('خطأ', 'Error'), t('فشل تحديث الملف الشخصي', 'Failed to update profile'));
+    }
+  };
+
   const menuItems = [
-    { icon: 'shield-checkmark-outline', label: t('\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062a\u063a\u0637\u064a\u0629', 'Coverage Details'), route: '/(tabs)/wallet' },
-    { icon: 'card-outline', label: t('\u0627\u0644\u0627\u0633\u062a\u062d\u0642\u0627\u0642\u0627\u062a', 'Benefits'), route: '/(tabs)/wallet' },
-    { icon: 'settings-outline', label: t('\u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a', 'Settings'), route: '/profile/settings' },
+    { icon: 'shield-checkmark-outline' as const, label: t('تفاصيل التغطية', 'Coverage Details'), route: '/(tabs)/wallet' },
+    { icon: 'card-outline' as const, label: t('الاستحقاقات', 'Benefits'), route: '/(tabs)/wallet' },
+    { icon: 'receipt-outline' as const, label: t('سجل المدفوعات', 'Payment History'), route: '/(tabs)/wallet' },
+    { icon: 'settings-outline' as const, label: t('الإعدادات', 'Settings'), route: '/profile/settings' },
   ];
+
+  const summary = paymentData?.summary;
 
   return (
     <View style={styles.container}>
@@ -34,8 +66,10 @@ export default function ProfileScreen() {
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
         </Pressable>
-        <Text style={styles.topBarTitle}>{t('\u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0634\u062e\u0635\u064a', 'Profile')}</Text>
-        <View style={{ width: 36 }} />
+        <Text style={styles.topBarTitle}>{t('الملف الشخصي', 'Profile')}</Text>
+        <Pressable onPress={() => isEditing ? handleSaveProfile() : setIsEditing(true)} style={styles.backButton}>
+          <Ionicons name={isEditing ? 'checkmark' : 'create-outline'} size={20} color={Colors.signalTeal} />
+        </Pressable>
       </View>
 
       <ScrollView
@@ -43,53 +77,113 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.avatarSection}>
-          <View style={styles.avatar}>
-            <Ionicons name="person" size={32} color={Colors.signalTeal} />
-          </View>
-          <Text style={styles.userName}>{user?.nameEn || 'User'}</Text>
-          <Text style={styles.userNameAr}>{user?.nameAr || ''}</Text>
+          {user?.avatarUrl ? (
+            <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatar}>
+              <Ionicons name="person" size={32} color={Colors.signalTeal} />
+            </View>
+          )}
+          <Text style={styles.userName}>{user?.nameEn || user?.username || 'User'}</Text>
+          {user?.nameAr ? <Text style={styles.userNameAr}>{user.nameAr}</Text> : null}
           <Text style={styles.memberId}>{user?.memberId}</Text>
+          {user?.githubConnected && (
+            <View style={styles.githubBadge}>
+              <Ionicons name="logo-github" size={14} color="#fff" />
+              <Text style={styles.githubBadgeText}>GitHub Connected</Text>
+            </View>
+          )}
         </View>
 
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062a \u0627\u0644\u0634\u062e\u0635\u064a\u0629', 'Personal Information')}</Text>
+        <Text style={styles.sectionTitle}>{t('المعلومات الشخصية', 'Personal Information')}</Text>
         <GlassCard style={styles.infoCard}>
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconWrap}>
-              <Ionicons name="card-outline" size={16} color={Colors.signalTeal} />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>{t('\u0627\u0644\u0647\u0648\u064a\u0629 \u0627\u0644\u0648\u0637\u0646\u064a\u0629', 'National ID')}</Text>
-              <Text style={styles.infoValue}>{user?.nationalId}</Text>
-            </View>
-          </View>
-          <View style={styles.infoDivider} />
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconWrap}>
-              <Ionicons name="mail-outline" size={16} color={Colors.signalTeal} />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>{t('\u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a', 'Email')}</Text>
-              <Text style={styles.infoValue}>{user?.email}</Text>
-            </View>
-          </View>
-          <View style={styles.infoDivider} />
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconWrap}>
-              <Ionicons name="call-outline" size={16} color={Colors.signalTeal} />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>{t('\u0627\u0644\u0647\u0627\u062a\u0641', 'Phone')}</Text>
-              <Text style={styles.infoValue}>{user?.phone}</Text>
-            </View>
-          </View>
+          {isEditing ? (
+            <>
+              <View style={styles.editRow}>
+                <Text style={styles.editLabel}>{t('الاسم (EN)', 'Name (EN)')}</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editNameEn}
+                  onChangeText={setEditNameEn}
+                  placeholder="Full Name"
+                  placeholderTextColor={Colors.professionalGray}
+                />
+              </View>
+              <View style={styles.editRow}>
+                <Text style={styles.editLabel}>{t('الاسم (AR)', 'Name (AR)')}</Text>
+                <TextInput
+                  style={[styles.editInput, { textAlign: 'right' }]}
+                  value={editNameAr}
+                  onChangeText={setEditNameAr}
+                  placeholder="الاسم بالعربية"
+                  placeholderTextColor={Colors.professionalGray}
+                />
+              </View>
+              <View style={styles.editRow}>
+                <Text style={styles.editLabel}>{t('الهاتف', 'Phone')}</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editPhone}
+                  onChangeText={setEditPhone}
+                  placeholder="+966 50 xxx xxxx"
+                  placeholderTextColor={Colors.professionalGray}
+                  keyboardType="phone-pad"
+                />
+              </View>
+              <View style={styles.editRow}>
+                <Text style={styles.editLabel}>{t('الهوية', 'National ID')}</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editNationalId}
+                  onChangeText={setEditNationalId}
+                  placeholder="National ID"
+                  placeholderTextColor={Colors.professionalGray}
+                />
+              </View>
+            </>
+          ) : (
+            <>
+              <InfoRow icon="card-outline" label={t('الهوية الوطنية', 'National ID')} value={user?.nationalId || t('غير محدد', 'Not set')} />
+              <View style={styles.infoDivider} />
+              <InfoRow icon="mail-outline" label={t('البريد الإلكتروني', 'Email')} value={user?.email || '—'} />
+              <View style={styles.infoDivider} />
+              <InfoRow icon="call-outline" label={t('الهاتف', 'Phone')} value={user?.phone || t('غير محدد', 'Not set')} />
+            </>
+          )}
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u0642\u0627\u0626\u0645\u0629', 'Menu')}</Text>
+        {summary && (summary.totalClaims > 0 || summary.totalPaid > 0) && (
+          <>
+            <Text style={styles.sectionTitle}>{t('ملخص المدفوعات', 'Payment Summary')}</Text>
+            <GlassCard style={styles.infoCard}>
+              <View style={styles.paymentSummaryRow}>
+                <View style={styles.paymentStat}>
+                  <Text style={styles.paymentStatValue}>{summary.totalPaid?.toFixed(0) || '0'} SAR</Text>
+                  <Text style={styles.paymentStatLabel}>{t('إجمالي المدفوعات', 'Total Paid')}</Text>
+                </View>
+                <View style={styles.paymentStatDivider} />
+                <View style={styles.paymentStat}>
+                  <Text style={styles.paymentStatValue}>{summary.totalClaims || 0}</Text>
+                  <Text style={styles.paymentStatLabel}>{t('المعاملات', 'Transactions')}</Text>
+                </View>
+                <View style={styles.paymentStatDivider} />
+                <View style={styles.paymentStat}>
+                  <Text style={[styles.paymentStatValue, summary.pendingCount > 0 && { color: '#f59e0b' }]}>
+                    {summary.pendingCount || 0}
+                  </Text>
+                  <Text style={styles.paymentStatLabel}>{t('قيد الانتظار', 'Pending')}</Text>
+                </View>
+              </View>
+            </GlassCard>
+          </>
+        )}
+
+        <Text style={styles.sectionTitle}>{t('القائمة', 'Menu')}</Text>
         {menuItems.map((item, i) => (
           <Pressable key={i} onPress={() => router.push(item.route as any)}>
             <GlassCard variant="surface" style={styles.menuCard} padding={14}>
               <View style={styles.menuRow}>
-                <Ionicons name={item.icon as any} size={20} color={Colors.signalTeal} />
+                <Ionicons name={item.icon} size={20} color={Colors.signalTeal} />
                 <Text style={styles.menuLabel}>{item.label}</Text>
                 <Ionicons name="chevron-forward" size={18} color={Colors.professionalGray} />
               </View>
@@ -99,11 +193,25 @@ export default function ProfileScreen() {
 
         <Pressable style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={18} color={Colors.error} />
-          <Text style={styles.logoutText}>{t('\u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062e\u0631\u0648\u062c', 'Sign Out')}</Text>
+          <Text style={styles.logoutText}>{t('تسجيل الخروج', 'Sign Out')}</Text>
         </Pressable>
 
-        <Text style={styles.version}>BrainSAIT v1.0.0</Text>
+        <Text style={styles.version}>BrainSAIT v2.0.0</Text>
       </ScrollView>
+    </View>
+  );
+}
+
+function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <View style={styles.infoIconWrap}>
+        <Ionicons name={icon as any} size={16} color={Colors.signalTeal} />
+      </View>
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
+      </View>
     </View>
   );
 }
@@ -145,6 +253,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
+  avatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    marginBottom: 12,
+  },
   userName: {
     fontSize: 22,
     fontFamily: 'Inter_700Bold',
@@ -152,7 +266,7 @@ const styles = StyleSheet.create({
   },
   userNameAr: {
     fontSize: 16,
-    fontFamily: 'IBMPlexSansArabic_500Medium',
+    fontFamily: 'Inter_500Medium',
     color: Colors.textSecondary,
     marginTop: 2,
   },
@@ -161,6 +275,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: Colors.signalTeal,
     marginTop: 4,
+  },
+  githubBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(36, 41, 46, 0.6)',
+  },
+  githubBadgeText: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    color: '#e1e4e8',
   },
   sectionTitle: {
     fontSize: 15,
@@ -199,6 +328,50 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
     marginVertical: 12,
     marginLeft: 44,
+  },
+  editRow: {
+    marginBottom: 14,
+  },
+  editLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  editInput: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textPrimary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  paymentStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  paymentStatValue: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.textPrimary,
+  },
+  paymentStatLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  paymentStatDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   menuCard: { marginBottom: 8 },
   menuRow: {

@@ -1,13 +1,17 @@
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 import { StatusChip } from '@/components/StatusChip';
+import { apiRequest } from '@/lib/query-client';
 
 const timelineSteps = [
   { key: 'submitted', ar: 'تم الإرسال', en: 'Submitted', icon: 'paper-plane' },
@@ -29,8 +33,10 @@ function getTimelineIndex(status: string): number {
 export default function ClaimDetailScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
+  const [isPaying, setIsPaying] = useState(false);
 
   const { data: claimData, isLoading } = useQuery({
     queryKey: ['/api/claims', id],
@@ -196,6 +202,60 @@ export default function ClaimDetailScreen() {
             </>
           )}
         </GlassCard>
+
+        {(claim.status === 'submitted' || claim.status === 'approved') && claim.amountClaimed > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>{t('الدفع', 'Payment')}</Text>
+            <GlassCard variant="surface" style={styles.paymentCard} padding={16}>
+              <View style={styles.paymentRow}>
+                <View>
+                  <Text style={styles.paymentLabel}>{t('المبلغ المشترك (20%)', 'Copay (20%)')}</Text>
+                  <Text style={styles.paymentAmount}>{(claim.amountClaimed * 0.2).toFixed(2)} SAR</Text>
+                </View>
+                <Pressable
+                  style={[styles.payButton, isPaying && styles.payButtonDisabled]}
+                  onPress={async () => {
+                    setIsPaying(true);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                    try {
+                      const copay = claim.amountClaimed * 0.2;
+                      const res = await apiRequest('POST', '/api/payments/create-intent', {
+                        claimId: claimData.id,
+                        amount: copay,
+                        memberId: user?.memberId || 'MEM-2024-001',
+                      });
+                      const data = await res.json();
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      Alert.alert(
+                        t('تم إنشاء طلب الدفع', 'Payment Created'),
+                        t(
+                          `تم إنشاء طلب دفع بمبلغ ${copay.toFixed(2)} ريال سعودي. معرف الدفع: ${data.paymentIntentId?.slice(-8) || ''}`,
+                          `Payment of ${copay.toFixed(2)} SAR created. ID: ${data.paymentIntentId?.slice(-8) || ''}`
+                        ),
+                      );
+                    } catch (err: any) {
+                      Alert.alert(t('خطأ', 'Error'), err.message || t('فشل الدفع', 'Payment failed'));
+                    }
+                    setIsPaying(false);
+                  }}
+                  disabled={isPaying}
+                >
+                  {isPaying ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="card" size={16} color="#fff" />
+                      <Text style={styles.payButtonText}>{t('ادفع الآن', 'Pay Now')}</Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+              <Text style={styles.paymentNote}>
+                {t('الدفع عبر Stripe · بطاقة ائتمان/خصم', 'Via Stripe · Credit/Debit card')}
+              </Text>
+            </GlassCard>
+          </>
+        )}
 
         {claim.status === 'rejected' && (
           <Pressable style={styles.appealButton}>
@@ -395,5 +455,43 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_500Medium',
     color: Colors.signalTeal,
+  },
+  paymentCard: { marginBottom: 20 },
+  paymentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  paymentLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textSecondary,
+  },
+  paymentAmount: {
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.textPrimary,
+    marginTop: 2,
+  },
+  payButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.success,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  payButtonDisabled: { opacity: 0.5 },
+  payButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#fff',
+  },
+  paymentNote: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.professionalGray,
   },
 });

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   StyleSheet, Text, View, TextInput, Pressable, ActivityIndicator,
-  KeyboardAvoidingView, ScrollView, Platform,
+  KeyboardAvoidingView, ScrollView, Platform, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,29 +15,32 @@ import { GlassCard } from '@/components/GlassCard';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { login } = useAuth();
+  const { login, loginWithGitHub, register } = useAuth();
   const { t, toggleLanguage, language, isRTL } = useLanguage();
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [nameEn, setNameEn] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGitHubLoading, setIsGitHubLoading] = useState(false);
   const [error, setError] = useState('');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
 
   const handleLogin = async () => {
     setError('');
-    if (username.length < 3) {
-      setError(t('\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645 \u064a\u062c\u0628 \u0623\u0646 \u064a\u0643\u0648\u0646 3 \u0623\u062d\u0631\u0641 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644', 'Username must be at least 3 characters'));
+    if (!email || email.length < 3) {
+      setError(t('البريد الإلكتروني مطلوب', 'Email is required'));
       return;
     }
     if (password.length < 4) {
-      setError(t('\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u064a\u062c\u0628 \u0623\u0646 \u062a\u0643\u0648\u0646 4 \u0623\u062d\u0631\u0641 \u0639\u0644\u0649 \u0627\u0644\u0623\u0642\u0644', 'Password must be at least 4 characters'));
+      setError(t('كلمة المرور يجب أن تكون 4 أحرف على الأقل', 'Password must be at least 4 characters'));
       return;
     }
 
     setIsLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const success = await login(username, password);
+    const success = await login(email, password);
     setIsLoading(false);
 
     if (success) {
@@ -45,7 +48,50 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(t('\u0641\u0634\u0644 \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644', 'Login failed'));
+      setError(t('فشل تسجيل الدخول', 'Invalid email or password'));
+    }
+  };
+
+  const handleRegister = async () => {
+    setError('');
+    if (!email || !email.includes('@')) {
+      setError(t('بريد إلكتروني صالح مطلوب', 'Valid email required'));
+      return;
+    }
+    if (password.length < 4) {
+      setError(t('كلمة المرور يجب أن تكون 4 أحرف على الأقل', 'Password must be at least 4 characters'));
+      return;
+    }
+
+    setIsLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const success = await register({ email, password, nameEn: nameEn || undefined });
+    setIsLoading(false);
+
+    if (success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace('/(tabs)');
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(t('فشل إنشاء الحساب', 'Registration failed. Email may already be in use.'));
+    }
+  };
+
+  const handleGitHubLogin = async () => {
+    setError('');
+    setIsGitHubLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const success = await loginWithGitHub();
+    setIsGitHubLoading(false);
+
+    if (success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace('/(tabs)');
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(t('فشل تسجيل الدخول عبر GitHub', 'GitHub login failed'));
     }
   };
 
@@ -64,7 +110,7 @@ export default function LoginScreen() {
           <View style={styles.langToggle}>
             <Pressable onPress={toggleLanguage} style={styles.langButton}>
               <Ionicons name="globe-outline" size={18} color={Colors.signalTeal} />
-              <Text style={styles.langText}>{language === 'en' ? '\u0639\u0631\u0628\u064a' : 'English'}</Text>
+              <Text style={styles.langText}>{language === 'en' ? 'عربي' : 'English'}</Text>
             </Pressable>
           </View>
 
@@ -74,38 +120,65 @@ export default function LoginScreen() {
             </View>
             <Text style={styles.brandName}>BrainSAIT</Text>
             <Text style={styles.brandSubtitle}>
-              {t('\u0645\u0646\u0635\u0629 \u0627\u0644\u0631\u0639\u0627\u064a\u0629 \u0627\u0644\u0635\u062d\u064a\u0629 \u0627\u0644\u0645\u0648\u062d\u062f\u0629', 'Unified Healthcare Platform')}
+              {t('منصة الرعاية الصحية الموحدة', 'Unified Healthcare Platform')}
             </Text>
           </View>
 
           <GlassCard style={styles.card}>
             <Text style={styles.cardTitle}>
-              {t('\u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644', 'Sign In')}
+              {mode === 'login'
+                ? t('تسجيل الدخول', 'Sign In')
+                : t('إنشاء حساب', 'Create Account')}
             </Text>
 
-            <Pressable style={styles.absherButton}>
-              <Ionicons name="shield-checkmark" size={20} color="#fff" />
-              <Text style={styles.absherText}>
-                {t('\u062f\u062e\u0648\u0644 \u0639\u0628\u0631 \u0623\u0628\u0634\u0631', 'Sign in with Absher')}
-              </Text>
+            <Pressable
+              style={[styles.githubButton, isGitHubLoading && styles.loginDisabled]}
+              onPress={handleGitHubLogin}
+              disabled={isGitHubLoading}
+            >
+              {isGitHubLoading ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="logo-github" size={20} color="#fff" />
+                  <Text style={styles.githubText}>
+                    {t('تسجيل الدخول عبر GitHub', 'Sign in with GitHub')}
+                  </Text>
+                </>
+              )}
             </Pressable>
 
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{t('\u0623\u0648', 'or')}</Text>
+              <Text style={styles.dividerText}>{t('أو', 'or')}</Text>
               <View style={styles.dividerLine} />
             </View>
 
+            {mode === 'register' && (
+              <View style={styles.inputContainer}>
+                <Ionicons name="person-outline" size={18} color={Colors.professionalGray} style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.input, isRTL && styles.rtlInput]}
+                  placeholder={t('الاسم الكامل', 'Full Name')}
+                  placeholderTextColor={Colors.professionalGray}
+                  value={nameEn}
+                  onChangeText={setNameEn}
+                  autoCapitalize="words"
+                />
+              </View>
+            )}
+
             <View style={styles.inputContainer}>
-              <Ionicons name="person-outline" size={18} color={Colors.professionalGray} style={styles.inputIcon} />
+              <Ionicons name="mail-outline" size={18} color={Colors.professionalGray} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, isRTL && styles.rtlInput]}
-                placeholder={t('\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645', 'Username')}
+                placeholder={t('البريد الإلكتروني', 'Email')}
                 placeholderTextColor={Colors.professionalGray}
-                value={username}
-                onChangeText={setUsername}
+                value={email}
+                onChangeText={setEmail}
                 autoCapitalize="none"
                 autoCorrect={false}
+                keyboardType="email-address"
               />
             </View>
 
@@ -113,7 +186,7 @@ export default function LoginScreen() {
               <Ionicons name="lock-closed-outline" size={18} color={Colors.professionalGray} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, isRTL && styles.rtlInput]}
-                placeholder={t('\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631', 'Password')}
+                placeholder={t('كلمة المرور', 'Password')}
                 placeholderTextColor={Colors.professionalGray}
                 value={password}
                 onChangeText={setPassword}
@@ -133,19 +206,34 @@ export default function LoginScreen() {
 
             <Pressable
               style={({ pressed }) => [styles.loginButton, pressed && styles.loginPressed, isLoading && styles.loginDisabled]}
-              onPress={handleLogin}
+              onPress={mode === 'login' ? handleLogin : handleRegister}
               disabled={isLoading}
             >
               {isLoading ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Text style={styles.loginText}>{t('\u062f\u062e\u0648\u0644', 'Sign In')}</Text>
+                <Text style={styles.loginText}>
+                  {mode === 'login'
+                    ? t('دخول', 'Sign In')
+                    : t('إنشاء حساب', 'Create Account')}
+                </Text>
               )}
+            </Pressable>
+
+            <Pressable
+              style={styles.switchMode}
+              onPress={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
+            >
+              <Text style={styles.switchText}>
+                {mode === 'login'
+                  ? t('ليس لديك حساب؟ إنشاء حساب جديد', "Don't have an account? Create one")
+                  : t('لديك حساب بالفعل؟ تسجيل الدخول', 'Already have an account? Sign in')}
+              </Text>
             </Pressable>
           </GlassCard>
 
           <Text style={styles.footer}>
-            {t('\u0645\u062a\u0648\u0627\u0641\u0642 \u0645\u0639 NPHIES \u00b7 \u0631\u0624\u064a\u0629 2030', 'NPHIES Compliant \u00b7 Vision 2030')}
+            {t('متوافق مع NPHIES · رؤية 2030', 'NPHIES Compliant · Vision 2030')}
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -216,17 +304,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-  absherButton: {
+  githubButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: Colors.signalTeal,
+    backgroundColor: '#24292e',
     paddingVertical: 14,
     borderRadius: 12,
     marginBottom: 16,
   },
-  absherText: {
+  githubText: {
     fontSize: 15,
     fontFamily: 'Inter_600SemiBold',
     color: '#fff',
@@ -307,6 +395,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     color: '#fff',
+  },
+  switchMode: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  switchText: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: Colors.signalTeal,
   },
   footer: {
     fontSize: 12,

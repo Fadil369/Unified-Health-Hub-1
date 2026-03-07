@@ -1,9 +1,10 @@
 import { createContext, useContext, useState, useMemo, ReactNode, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { getApiUrl } from '@/lib/query-client';
 
 interface User {
-  id: string;
+  id: number;
   username: string;
   nameAr: string;
   nameEn: string;
@@ -11,55 +12,163 @@ interface User {
   memberId: string;
   email: string;
   phone: string;
+  avatarUrl?: string;
+  githubConnected?: boolean;
 }
 
 interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
+  loginWithGitHub: () => Promise<boolean>;
+  register: (data: { email: string; password: string; nameEn?: string; nameAr?: string; phone?: string }) => Promise<boolean>;
+  updateProfile: (data: { nameEn?: string; nameAr?: string; phone?: string; nationalId?: string }) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const MOCK_USER: User = {
-  id: 'patient-001',
-  username: 'ahmed.hassan',
-  nameAr: '\u0623\u062d\u0645\u062f \u062d\u0633\u0646',
-  nameEn: 'Ahmed Hassan',
-  nationalId: '****1234',
-  memberId: 'MEM-2024-001',
-  email: 'ahmed@example.com',
-  phone: '+966 50 123 4567',
-};
+const AUTH_TOKEN_KEY = 'brainsait_auth_token';
+const AUTH_USER_KEY = 'brainsait_auth_user';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem('brainsait_auth').then(data => {
-      if (data) {
-        setUser(JSON.parse(data));
-      }
+    (async () => {
+      try {
+        const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+        const savedUser = await AsyncStorage.getItem(AUTH_USER_KEY);
+
+        if (token && savedUser) {
+          const parsed = JSON.parse(savedUser);
+          setUser(parsed);
+
+          try {
+            const apiUrl = getApiUrl();
+            const res = await fetch(new URL('/api/auth/me', apiUrl).toString(), {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              setUser(data.user);
+              await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
+            } else {
+              await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+              await AsyncStorage.removeItem(AUTH_USER_KEY);
+              setUser(null);
+            }
+          } catch (e) {}
+        }
+      } catch (e) {}
       setIsLoading(false);
-    }).catch(() => setIsLoading(false));
+    })();
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    if (username.length >= 3 && password.length >= 4) {
-      const userData = { ...MOCK_USER, username };
-      setUser(userData);
-      await AsyncStorage.setItem('brainsait_auth', JSON.stringify(userData));
+  const login = useCallback(async (email: string, password: string) => {
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(new URL('/api/auth/login', apiUrl).toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      await AsyncStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
+      setUser(data.user);
       return true;
+    } catch (e) {
+      return false;
     }
-    return false;
+  }, []);
+
+  const loginWithGitHub = useCallback(async () => {
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(new URL('/api/auth/github', apiUrl).toString());
+
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      await AsyncStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
+      setUser(data.user);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }, []);
+
+  const register = useCallback(async (regData: { email: string; password: string; nameEn?: string; nameAr?: string; phone?: string }) => {
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(new URL('/api/auth/register', apiUrl).toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(regData),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Registration failed');
+      }
+
+      const data = await res.json();
+      await AsyncStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
+      setUser(data.user);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }, []);
+
+  const updateProfile = useCallback(async (profileData: { nameEn?: string; nameAr?: string; phone?: string; nationalId?: string }) => {
+    try {
+      const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+      if (!token) return false;
+
+      const apiUrl = getApiUrl();
+      const res = await fetch(new URL('/api/auth/profile', apiUrl).toString(), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profileData),
+      });
+
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      setUser(data.user);
+      await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
+      return true;
+    } catch (e) {
+      return false;
+    }
   }, []);
 
   const logout = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+      if (token) {
+        const apiUrl = getApiUrl();
+        fetch(new URL('/api/auth/logout', apiUrl).toString(), {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {});
+      }
+    } catch (e) {}
+    await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+    await AsyncStorage.removeItem(AUTH_USER_KEY);
     setUser(null);
-    await AsyncStorage.removeItem('brainsait_auth');
   }, []);
 
   const value = useMemo(() => ({
@@ -67,8 +176,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user,
     isLoading,
     login,
+    loginWithGitHub,
+    register,
+    updateProfile,
     logout,
-  }), [user, isLoading, login, logout]);
+  }), [user, isLoading, login, loginWithGitHub, register, updateProfile, logout]);
 
   return (
     <AuthContext.Provider value={value}>

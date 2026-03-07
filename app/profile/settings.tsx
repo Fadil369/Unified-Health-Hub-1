@@ -5,11 +5,13 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { t, language, toggleLanguage } = useLanguage();
+  const { user } = useAuth();
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
   return (
@@ -19,7 +21,7 @@ export default function SettingsScreen() {
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
         </Pressable>
-        <Text style={styles.topBarTitle}>{t('\u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a', 'Settings')}</Text>
+        <Text style={styles.topBarTitle}>{t('الإعدادات', 'Settings')}</Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -27,28 +29,82 @@ export default function SettingsScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom + (Platform.OS === 'web' ? 34 : 0) }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u0644\u063a\u0629 \u0648\u0627\u0644\u0648\u0635\u0648\u0644', 'Language & Accessibility')}</Text>
+        <Text style={styles.sectionTitle}>{t('الحسابات المرتبطة', 'Linked Accounts')}</Text>
+        <GlassCard style={styles.settingsCard}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Ionicons name="logo-github" size={20} color={Colors.signalTeal} />
+              <View>
+                <Text style={styles.settingLabel}>GitHub</Text>
+                <Text style={styles.settingValue}>
+                  {user?.githubConnected
+                    ? t('متصل', 'Connected')
+                    : t('غير متصل', 'Not connected')}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.statusDot, user?.githubConnected ? styles.statusConnected : styles.statusDisconnected]} />
+          </View>
+          <View style={styles.settingDivider} />
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Ionicons name="card-outline" size={20} color={Colors.signalTeal} />
+              <View>
+                <Text style={styles.settingLabel}>Stripe</Text>
+                <Text style={styles.settingValue}>{t('الدفع الإلكتروني', 'Online Payments')}</Text>
+              </View>
+            </View>
+            <View style={[styles.statusDot, styles.statusConnected]} />
+          </View>
+        </GlassCard>
+
+        <Text style={styles.sectionTitle}>{t('اللغة والوصول', 'Language & Accessibility')}</Text>
         <GlassCard style={styles.settingsCard}>
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <Ionicons name="globe-outline" size={20} color={Colors.signalTeal} />
               <View>
-                <Text style={styles.settingLabel}>{t('\u0627\u0644\u0644\u063a\u0629', 'Language')}</Text>
-                <Text style={styles.settingValue}>{language === 'ar' ? '\u0627\u0644\u0639\u0631\u0628\u064a\u0629' : 'English'}</Text>
+                <Text style={styles.settingLabel}>{t('اللغة', 'Language')}</Text>
+                <Text style={styles.settingValue}>{language === 'ar' ? 'العربية' : 'English'}</Text>
               </View>
             </View>
             <Pressable onPress={toggleLanguage} style={styles.langToggle}>
-              <Text style={styles.langToggleText}>{language === 'ar' ? 'EN' : '\u0639\u0631'}</Text>
+              <Text style={styles.langToggleText}>{language === 'ar' ? 'EN' : 'عر'}</Text>
             </Pressable>
           </View>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u0623\u0645\u0627\u0646', 'Security')}</Text>
+        <Text style={styles.sectionTitle}>{t('طرق الدفع', 'Payment Methods')}</Text>
+        <GlassCard style={styles.settingsCard}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Ionicons name="card" size={20} color={Colors.signalTeal} />
+              <View>
+                <Text style={styles.settingLabel}>{t('بطاقة الائتمان/الخصم', 'Credit/Debit Card')}</Text>
+                <Text style={styles.settingValue}>{t('عبر Stripe', 'Via Stripe')}</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={Colors.professionalGray} />
+          </View>
+          <View style={styles.settingDivider} />
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Ionicons name="phone-portrait-outline" size={20} color={Colors.signalTeal} />
+              <View>
+                <Text style={styles.settingLabel}>Apple Pay / mada</Text>
+                <Text style={styles.settingValue}>{t('قريباً', 'Coming Soon')}</Text>
+              </View>
+            </View>
+            <View style={[styles.statusDot, styles.statusDisconnected]} />
+          </View>
+        </GlassCard>
+
+        <Text style={styles.sectionTitle}>{t('الأمان', 'Security')}</Text>
         <GlassCard style={styles.settingsCard}>
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <Ionicons name="finger-print-outline" size={20} color={Colors.signalTeal} />
-              <Text style={styles.settingLabel}>{t('\u0627\u0644\u0645\u0635\u0627\u062f\u0642\u0629 \u0627\u0644\u0628\u064a\u0648\u0645\u062a\u0631\u064a\u0629', 'Biometric Auth')}</Text>
+              <Text style={styles.settingLabel}>{t('المصادقة البيومترية', 'Biometric Auth')}</Text>
             </View>
             <Switch
               value={false}
@@ -60,18 +116,30 @@ export default function SettingsScreen() {
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <Ionicons name="key-outline" size={20} color={Colors.signalTeal} />
-              <Text style={styles.settingLabel}>{t('\u0631\u0645\u0632 PIN', 'PIN Code')}</Text>
+              <Text style={styles.settingLabel}>{t('رمز PIN', 'PIN Code')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={Colors.professionalGray} />
           </View>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u0625\u0634\u0639\u0627\u0631\u0627\u062a', 'Notifications')}</Text>
+        <Text style={styles.sectionTitle}>{t('الإشعارات', 'Notifications')}</Text>
         <GlassCard style={styles.settingsCard}>
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <Ionicons name="notifications-outline" size={20} color={Colors.signalTeal} />
-              <Text style={styles.settingLabel}>{t('\u062a\u062d\u062f\u064a\u062b\u0627\u062a \u0627\u0644\u0645\u0637\u0627\u0644\u0628\u0627\u062a', 'Claim Updates')}</Text>
+              <Text style={styles.settingLabel}>{t('تحديثات المطالبات', 'Claim Updates')}</Text>
+            </View>
+            <Switch
+              value={true}
+              trackColor={{ false: 'rgba(255,255,255,0.1)', true: Colors.signalTeal }}
+              thumbColor="#fff"
+            />
+          </View>
+          <View style={styles.settingDivider} />
+          <View style={styles.settingRow}>
+            <View style={styles.settingLeft}>
+              <Ionicons name="cash-outline" size={20} color={Colors.signalTeal} />
+              <Text style={styles.settingLabel}>{t('تأكيدات الدفع', 'Payment Confirmations')}</Text>
             </View>
             <Switch
               value={true}
@@ -83,7 +151,7 @@ export default function SettingsScreen() {
           <View style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <Ionicons name="clipboard-outline" size={20} color={Colors.signalTeal} />
-              <Text style={styles.settingLabel}>{t('\u0642\u0631\u0627\u0631\u0627\u062a \u0627\u0644\u062a\u0641\u0648\u064a\u0636', 'Auth Decisions')}</Text>
+              <Text style={styles.settingLabel}>{t('قرارات التفويض', 'Auth Decisions')}</Text>
             </View>
             <Switch
               value={true}
@@ -93,12 +161,12 @@ export default function SettingsScreen() {
           </View>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u062e\u0635\u0648\u0635\u064a\u0629', 'Privacy')}</Text>
+        <Text style={styles.sectionTitle}>{t('الخصوصية', 'Privacy')}</Text>
         <GlassCard style={styles.settingsCard}>
           <Pressable style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <Ionicons name="document-text-outline" size={20} color={Colors.signalTeal} />
-              <Text style={styles.settingLabel}>{t('\u0633\u062c\u0644 \u0627\u0644\u0645\u0631\u0627\u062c\u0639\u0629', 'Audit Log')}</Text>
+              <Text style={styles.settingLabel}>{t('سجل المراجعة', 'Audit Log')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={Colors.professionalGray} />
           </Pressable>
@@ -106,7 +174,7 @@ export default function SettingsScreen() {
           <Pressable style={styles.settingRow}>
             <View style={styles.settingLeft}>
               <Ionicons name="download-outline" size={20} color={Colors.signalTeal} />
-              <Text style={styles.settingLabel}>{t('\u062a\u0635\u062f\u064a\u0631 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a', 'Export Data')}</Text>
+              <Text style={styles.settingLabel}>{t('تصدير البيانات', 'Export Data')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={Colors.professionalGray} />
           </Pressable>
@@ -186,5 +254,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
     color: Colors.signalTeal,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  statusConnected: {
+    backgroundColor: '#22c55e',
+  },
+  statusDisconnected: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
 });

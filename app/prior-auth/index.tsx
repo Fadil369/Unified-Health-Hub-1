@@ -1,16 +1,32 @@
-import { StyleSheet, Text, View, FlatList, Pressable, Platform } from 'react-native';
+import { StyleSheet, Text, View, FlatList, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 import { StatusChip } from '@/components/StatusChip';
-import { mockPriorAuths, type PriorAuth } from '@/lib/mock-data';
+import { apiRequest } from '@/lib/query-client';
 
-function PriorAuthItem({ item }: { item: PriorAuth }) {
+interface PriorAuthDisplay {
+  id: string;
+  referenceNumber: string;
+  status: string;
+  serviceTypeAr: string;
+  serviceTypeEn: string;
+  providerNameAr: string;
+  providerNameEn: string;
+  diagnosisCodeAr: string;
+  diagnosisCodeEn: string;
+  urgency: string;
+  approvalProbability: number;
+}
+
+function PriorAuthItem({ item }: { item: PriorAuthDisplay }) {
   const { t } = useLanguage();
   const urgencyColors: Record<string, string> = {
     routine: Colors.success,
@@ -28,10 +44,10 @@ function PriorAuthItem({ item }: { item: PriorAuth }) {
       <Text style={styles.provider}>{t(item.providerNameAr, item.providerNameEn)}</Text>
       <Text style={styles.diagnosis}>{t(item.diagnosisCodeAr, item.diagnosisCodeEn)}</Text>
       <View style={styles.cardFooter}>
-        <View style={[styles.urgencyBadge, { backgroundColor: `${urgencyColors[item.urgency]}20` }]}>
-          <Text style={[styles.urgencyText, { color: urgencyColors[item.urgency] }]}>
+        <View style={[styles.urgencyBadge, { backgroundColor: `${urgencyColors[item.urgency] || Colors.success}20` }]}>
+          <Text style={[styles.urgencyText, { color: urgencyColors[item.urgency] || Colors.success }]}>
             {t(
-              item.urgency === 'routine' ? '\u0631\u0648\u062a\u064a\u0646\u064a' : item.urgency === 'urgent' ? '\u0639\u0627\u062c\u0644' : '\u0637\u0627\u0631\u0626',
+              item.urgency === 'routine' ? 'روتيني' : item.urgency === 'urgent' ? 'عاجل' : 'طارئ',
               item.urgency.charAt(0).toUpperCase() + item.urgency.slice(1)
             )}
           </Text>
@@ -50,7 +66,30 @@ function PriorAuthItem({ item }: { item: PriorAuth }) {
 export default function PriorAuthListScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { user } = useAuth();
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
+
+  const { data: authsData, isLoading } = useQuery({
+    queryKey: ['/api/prior-auth'],
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/prior-auth?memberId=${user?.memberId || 'MEM-2024-001'}`);
+      return res.json();
+    },
+  });
+
+  const priorAuths: PriorAuthDisplay[] = (authsData?.priorAuths || []).map((pa: any) => ({
+    id: String(pa.id),
+    referenceNumber: pa.reference_number || pa.referenceNumber || `PA-${pa.id}`,
+    status: pa.status || 'pending',
+    serviceTypeAr: pa.service_type_ar || pa.service_type || '',
+    serviceTypeEn: pa.service_type_en || pa.service_type || '',
+    providerNameAr: pa.provider_name_ar || '',
+    providerNameEn: pa.provider_name_en || 'Provider',
+    diagnosisCodeAr: pa.diagnosis_code_ar || pa.diagnosis_code || '',
+    diagnosisCodeEn: pa.diagnosis_code_en || pa.diagnosis_code || '',
+    urgency: pa.urgency || 'routine',
+    approvalProbability: pa.approval_probability || pa.ai_approval_probability || 0.85,
+  }));
 
   return (
     <View style={styles.container}>
@@ -59,7 +98,7 @@ export default function PriorAuthListScreen() {
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
         </Pressable>
-        <Text style={styles.topBarTitle}>{t('\u0627\u0644\u062a\u0641\u0648\u064a\u0636 \u0627\u0644\u0645\u0633\u0628\u0642', 'Prior Authorization')}</Text>
+        <Text style={styles.topBarTitle}>{t('التفويض المسبق', 'Prior Authorization')}</Text>
         <Pressable
           style={styles.addButton}
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/prior-auth/new'); }}
@@ -68,19 +107,25 @@ export default function PriorAuthListScreen() {
         </Pressable>
       </View>
 
-      <FlatList
-        data={mockPriorAuths}
-        keyExtractor={item => item.id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 40 + insets.bottom + (Platform.OS === 'web' ? 34 : 0) }]}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => <PriorAuthItem item={item} />}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="clipboard-outline" size={48} color={Colors.professionalGray} />
-            <Text style={styles.emptyText}>{t('\u0644\u0627 \u062a\u0648\u062c\u062f \u0637\u0644\u0628\u0627\u062a', 'No prior auth requests')}</Text>
-          </View>
-        }
-      />
+      {isLoading ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="large" color={Colors.signalTeal} />
+        </View>
+      ) : (
+        <FlatList
+          data={priorAuths}
+          keyExtractor={item => item.id}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 40 + insets.bottom + (Platform.OS === 'web' ? 34 : 0) }]}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => <PriorAuthItem item={item} />}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons name="clipboard-outline" size={48} color={Colors.professionalGray} />
+              <Text style={styles.emptyText}>{t('لا توجد طلبات', 'No prior auth requests')}</Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -114,6 +159,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.signalTeal,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  loadingState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   listContent: { paddingHorizontal: 16 },
   card: { marginBottom: 10 },

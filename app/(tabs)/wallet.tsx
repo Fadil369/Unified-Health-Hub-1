@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 import { BenefitBar } from '@/components/BenefitBar';
 import { ProgressRing } from '@/components/ProgressRing';
-import { mockCoverage, mockBenefits, mockDocuments } from '@/lib/mock-data';
 
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
@@ -18,11 +18,44 @@ export default function WalletScreen() {
   const [isFlipped, setIsFlipped] = useState(false);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
-  const coverage = mockCoverage;
-  const benefits = mockBenefits;
-  const documents = mockDocuments;
-  const totalUsed = benefits.reduce((sum, b) => sum + b.used, 0);
-  const totalMax = benefits.reduce((sum, b) => sum + b.total, 0);
+  const { data: coverageData, isLoading } = useQuery({
+    queryKey: ['/api/coverage', user?.memberId || 'MEM-2024-001'],
+  });
+
+  const coverage = coverageData ? {
+    insurerNameAr: coverageData.insurer_name_ar || '',
+    insurerNameEn: coverageData.insurer_name_en || '',
+    planNameAr: coverageData.plan_name_ar || '',
+    planNameEn: coverageData.plan_name_en || '',
+    status: coverageData.status || 'active',
+    policyNumber: coverageData.policy_number || '',
+    memberId: coverageData.member_id || '',
+    startDate: coverageData.start_date ? new Date(coverageData.start_date).toLocaleDateString() : '',
+    endDate: coverageData.end_date ? new Date(coverageData.end_date).toLocaleDateString() : '',
+    networkTier: coverageData.network_tier || 'Tier 1',
+    copayPercentage: coverageData.copay_percentage || 20,
+    deductibleUsed: coverageData.deductible_used || 0,
+    deductibleTotal: coverageData.deductible_total || 1,
+    outOfPocketUsed: coverageData.oop_used || 0,
+    outOfPocketMax: coverageData.oop_max || 1,
+  } : null;
+
+  const benefits = coverageData?.benefits || [
+    { id: 'ben-001', nameAr: 'طبي', nameEn: 'Medical', used: 0, total: 50000, icon: 'medkit' },
+    { id: 'ben-002', nameAr: 'أسنان', nameEn: 'Dental', used: 0, total: 5000, icon: 'body' },
+    { id: 'ben-003', nameAr: 'بصريات', nameEn: 'Vision', used: 0, total: 2000, icon: 'eye' },
+    { id: 'ben-004', nameAr: 'صيدلة', nameEn: 'Pharmacy', used: 0, total: 10000, icon: 'flask' },
+  ];
+
+  const documents = [
+    { id: 'doc-001', nameAr: 'نتائج فحص الدم', nameEn: 'Blood Test Results', category: 'lab', date: '2024-10-15', verified: true },
+    { id: 'doc-002', nameAr: 'أشعة سينية للصدر', nameEn: 'Chest X-Ray', category: 'imaging', date: '2024-09-20', verified: true },
+    { id: 'doc-003', nameAr: 'وصفة طبية', nameEn: 'Prescription', category: 'prescription', date: '2024-11-02', verified: false },
+    { id: 'doc-004', nameAr: 'خطاب إحالة', nameEn: 'Referral Letter', category: 'referral', date: '2024-11-10', verified: true },
+  ];
+
+  const totalUsed = benefits.reduce((sum: number, b: any) => sum + b.used, 0);
+  const totalMax = benefits.reduce((sum: number, b: any) => sum + b.total, 0);
 
   const categoryIcons: Record<string, string> = {
     lab: 'flask',
@@ -30,6 +63,15 @@ export default function WalletScreen() {
     prescription: 'medical',
     referral: 'document-text',
   };
+
+  if (isLoading || !coverage) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={[Colors.midnightBlue, '#0f2240', '#0a1628']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={Colors.signalTeal} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -39,7 +81,7 @@ export default function WalletScreen() {
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Text style={styles.screenTitle}>{t('\u0627\u0644\u0645\u062d\u0641\u0638\u0629 \u0627\u0644\u0635\u062d\u064a\u0629', 'Health Wallet')}</Text>
+        <Text style={styles.screenTitle}>{t('المحفظة الصحية', 'Health Wallet')}</Text>
 
         <Pressable onPress={() => setIsFlipped(!isFlipped)}>
           <GlassCard variant="elevated" style={styles.insuranceCard}>
@@ -58,15 +100,15 @@ export default function WalletScreen() {
                 </View>
                 <View style={styles.cardBottomRow}>
                   <View>
-                    <Text style={styles.cardLabel}>{t('\u0631\u0642\u0645 \u0627\u0644\u0648\u062b\u064a\u0642\u0629', 'Policy')}</Text>
+                    <Text style={styles.cardLabel}>{t('رقم الوثيقة', 'Policy')}</Text>
                     <Text style={styles.cardFieldValue}>{coverage.policyNumber}</Text>
                   </View>
                   <View>
-                    <Text style={styles.cardLabel}>{t('\u0627\u0644\u0635\u0644\u0627\u062d\u064a\u0629', 'Valid')}</Text>
+                    <Text style={styles.cardLabel}>{t('الصلاحية', 'Valid')}</Text>
                     <Text style={styles.cardFieldValue}>{coverage.startDate} - {coverage.endDate}</Text>
                   </View>
                 </View>
-                <Text style={styles.flipHint}>{t('\u0627\u0646\u0642\u0631 \u0644\u0644\u0642\u0644\u0628', 'Tap to flip')}</Text>
+                <Text style={styles.flipHint}>{t('انقر للقلب', 'Tap to flip')}</Text>
               </View>
             ) : (
               <View>
@@ -86,47 +128,47 @@ export default function WalletScreen() {
                   </View>
                   <View style={styles.backRow}>
                     <Ionicons name="business-outline" size={14} color={Colors.textSecondary} />
-                    <Text style={styles.backText}>{t('\u0627\u0644\u0634\u0628\u0643\u0629', 'Network')}: {coverage.networkTier}</Text>
+                    <Text style={styles.backText}>{t('الشبكة', 'Network')}: {coverage.networkTier}</Text>
                   </View>
                 </View>
-                <Text style={styles.flipHint}>{t('\u0627\u0646\u0642\u0631 \u0644\u0644\u0642\u0644\u0628', 'Tap to flip')}</Text>
+                <Text style={styles.flipHint}>{t('انقر للقلب', 'Tap to flip')}</Text>
               </View>
             )}
           </GlassCard>
         </Pressable>
 
-        <Text style={styles.sectionTitle}>{t('\u0645\u0644\u062e\u0635 \u0627\u0644\u0625\u0646\u0641\u0627\u0642', 'Spending Summary')}</Text>
+        <Text style={styles.sectionTitle}>{t('ملخص الإنفاق', 'Spending Summary')}</Text>
         <GlassCard style={styles.spendingCard}>
           <View style={styles.spendingRow}>
             <ProgressRing
-              progress={totalUsed / totalMax}
+              progress={totalMax > 0 ? totalUsed / totalMax : 0}
               size={90}
               strokeWidth={8}
-              value={`${Math.round((totalUsed / totalMax) * 100)}%`}
-              label={t('\u0645\u0633\u062a\u062e\u062f\u0645', 'Used')}
+              value={`${totalMax > 0 ? Math.round((totalUsed / totalMax) * 100) : 0}%`}
+              label={t('مستخدم', 'Used')}
             />
             <View style={styles.spendingInfo}>
               <View style={styles.spendingItem}>
-                <Text style={styles.spendingLabel}>{t('\u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645', 'Used')}</Text>
+                <Text style={styles.spendingLabel}>{t('المستخدم', 'Used')}</Text>
                 <Text style={styles.spendingValue}>{totalUsed.toLocaleString()} SAR</Text>
               </View>
               <View style={styles.spendingItem}>
-                <Text style={styles.spendingLabel}>{t('\u0627\u0644\u0645\u062a\u0628\u0642\u064a', 'Remaining')}</Text>
+                <Text style={styles.spendingLabel}>{t('المتبقي', 'Remaining')}</Text>
                 <Text style={[styles.spendingValue, { color: Colors.success }]}>
                   {(totalMax - totalUsed).toLocaleString()} SAR
                 </Text>
               </View>
               <View style={styles.spendingItem}>
-                <Text style={styles.spendingLabel}>{t('\u0627\u0644\u0625\u062c\u0645\u0627\u0644\u064a', 'Total')}</Text>
+                <Text style={styles.spendingLabel}>{t('الإجمالي', 'Total')}</Text>
                 <Text style={styles.spendingValue}>{totalMax.toLocaleString()} SAR</Text>
               </View>
             </View>
           </View>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u0627\u0633\u062a\u062d\u0642\u0627\u0642\u0627\u062a', 'Benefits')}</Text>
+        <Text style={styles.sectionTitle}>{t('الاستحقاقات', 'Benefits')}</Text>
         <GlassCard style={styles.benefitsCard}>
-          {benefits.map((benefit, i) => (
+          {benefits.map((benefit: any, i: number) => (
             <View key={benefit.id}>
               <BenefitBar
                 nameAr={benefit.nameAr}
@@ -140,7 +182,7 @@ export default function WalletScreen() {
           ))}
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u0645\u0633\u062a\u0646\u062f\u0627\u062a \u0627\u0644\u0635\u062d\u064a\u0629', 'Health Documents')}</Text>
+        <Text style={styles.sectionTitle}>{t('المستندات الصحية', 'Health Documents')}</Text>
         {documents.map(doc => (
           <GlassCard key={doc.id} variant="surface" style={styles.docCard} padding={14}>
             <View style={styles.docRow}>
@@ -154,7 +196,7 @@ export default function WalletScreen() {
               {doc.verified && (
                 <View style={styles.verifiedBadge}>
                   <Ionicons name="checkmark-circle" size={14} color={Colors.success} />
-                  <Text style={styles.verifiedText}>{t('\u0645\u0648\u062b\u0642', 'Verified')}</Text>
+                  <Text style={styles.verifiedText}>{t('موثق', 'Verified')}</Text>
                 </View>
               )}
             </View>

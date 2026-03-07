@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -12,12 +13,26 @@ import { GlassCard } from '@/components/GlassCard';
 import { ProgressRing } from '@/components/ProgressRing';
 import { QuickAction } from '@/components/QuickAction';
 import { StatusChip } from '@/components/StatusChip';
-import { mockCoverage, mockClaims } from '@/lib/mock-data';
+import { apiRequest } from '@/lib/query-client';
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, isLoading } = useAuth();
   const { t, toggleLanguage, language } = useLanguage();
+
+  const { data: coverageData } = useQuery({
+    queryKey: ['/api/coverage', user?.memberId || 'MEM-2024-001'],
+    enabled: isAuthenticated,
+  });
+
+  const { data: claimsData } = useQuery({
+    queryKey: ['/api/claims'],
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/claims?memberId=${user?.memberId || 'MEM-2024-001'}`);
+      return res.json();
+    },
+    enabled: isAuthenticated,
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -27,10 +42,36 @@ export default function DashboardScreen() {
 
   if (!isAuthenticated || !user) return null;
 
-  const coverage = mockCoverage;
-  const recentClaims = mockClaims.slice(0, 4);
-  const deductibleProgress = coverage.deductibleUsed / coverage.deductibleTotal;
-  const oopProgress = coverage.outOfPocketUsed / coverage.outOfPocketMax;
+  const coverage = coverageData ? {
+    insurerNameAr: coverageData.insurer_name_ar || '',
+    insurerNameEn: coverageData.insurer_name_en || '',
+    planNameAr: coverageData.plan_name_ar || '',
+    planNameEn: coverageData.plan_name_en || '',
+    status: coverageData.status || 'active',
+    policyNumber: coverageData.policy_number || '',
+    memberId: coverageData.member_id || '',
+    endDate: coverageData.end_date || '',
+    deductibleUsed: coverageData.deductible_used || 0,
+    deductibleTotal: coverageData.deductible_total || 1,
+    outOfPocketUsed: coverageData.oop_used || 0,
+    outOfPocketMax: coverageData.oop_max || 1,
+  } : null;
+
+  const recentClaims = (claimsData?.claims || []).slice(0, 4).map((c: any) => ({
+    id: c.claim_number || c.id,
+    claimNumber: c.claim_number,
+    status: c.status,
+    serviceDate: c.service_date ? new Date(c.service_date).toISOString().split('T')[0] : '',
+    providerNameAr: c.provider_name_ar || c.diagnosis_desc_ar || '',
+    providerNameEn: c.provider_name_en || 'Provider',
+    diagnosisAr: c.diagnosis_desc_ar || '',
+    diagnosisEn: c.diagnosis_desc_en || '',
+    amountClaimed: c.amount_claimed || 0,
+    amountApproved: c.amount_approved || 0,
+  }));
+
+  const deductibleProgress = coverage ? coverage.deductibleUsed / coverage.deductibleTotal : 0;
+  const oopProgress = coverage ? coverage.outOfPocketUsed / coverage.outOfPocketMax : 0;
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
   return (
@@ -68,6 +109,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {coverage ? (
         <GlassCard variant="elevated" style={styles.coverageCard}>
           <View style={styles.coverageHeader}>
             <View style={styles.coverageInfo}>
@@ -94,7 +136,7 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.coverageItem}>
               <Text style={styles.coverageLabel}>{t('\u0627\u0644\u0635\u0644\u0627\u062d\u064a\u0629', 'Valid Until')}</Text>
-              <Text style={styles.coverageValue}>{coverage.endDate}</Text>
+              <Text style={styles.coverageValue}>{coverage.endDate ? new Date(coverage.endDate).toLocaleDateString() : ''}</Text>
             </View>
           </View>
           <View style={styles.oopRow}>
@@ -105,6 +147,12 @@ export default function DashboardScreen() {
             <View style={[styles.oopFill, { width: `${Math.round(oopProgress * 100)}%` }]} />
           </View>
         </GlassCard>
+        ) : (
+        <GlassCard variant="elevated" style={styles.coverageCard}>
+          <ActivityIndicator color={Colors.signalTeal} />
+          <Text style={[styles.planName, { textAlign: 'center', marginTop: 8 }]}>{t('جاري التحميل...', 'Loading coverage...')}</Text>
+        </GlassCard>
+        )}
 
         <Text style={styles.sectionTitle}>{t('\u0625\u062c\u0631\u0627\u0621\u0627\u062a \u0633\u0631\u064a\u0639\u0629', 'Quick Actions')}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActions}>

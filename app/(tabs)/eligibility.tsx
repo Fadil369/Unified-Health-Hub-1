@@ -4,44 +4,73 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 import { BenefitBar } from '@/components/BenefitBar';
 import { StatusChip } from '@/components/StatusChip';
-import { mockCoverage, mockBenefits } from '@/lib/mock-data';
+import { apiRequest } from '@/lib/query-client';
+
+interface EligibilityResult {
+  eligible: boolean;
+  member_id: string;
+  plan: string;
+  benefits: string[];
+  coverage: {
+    deductibleRemaining: number | null;
+    copay: number | null;
+    network: string;
+    oopRemaining: number | null;
+  };
+  notes: string;
+  source: string;
+  response_time_ms: number;
+}
 
 export default function EligibilityScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
-  const [searchId, setSearchId] = useState('');
+  const { user } = useAuth();
+  const [searchId, setSearchId] = useState(user?.memberId || 'MEM-2024-001');
   const [isChecking, setIsChecking] = useState(false);
-  const [hasResult, setHasResult] = useState(false);
-  const [responseTime, setResponseTime] = useState(0);
+  const [eligResult, setEligResult] = useState<EligibilityResult | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
+
+  const { data: coverageData } = useQuery({
+    queryKey: ['/api/coverage', user?.memberId || 'MEM-2024-001'],
+  });
 
   const handleCheck = useCallback(async () => {
     if (!searchId.trim()) return;
     setIsChecking(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const start = Date.now();
-    await new Promise(resolve => setTimeout(resolve, 400 + Math.random() * 400));
-    setResponseTime(Date.now() - start);
-    setHasResult(true);
+    try {
+      const res = await apiRequest('POST', '/api/eligibility/check', { memberId: searchId.trim() });
+      const data: EligibilityResult = await res.json();
+      setEligResult(data);
+      Haptics.notificationAsync(
+        data.eligible
+          ? Haptics.NotificationFeedbackType.Success
+          : Haptics.NotificationFeedbackType.Warning
+      );
+    } catch {
+      setEligResult(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
     setIsChecking(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [searchId]);
 
   const toggleSection = (section: string) => {
     setExpandedSection(prev => prev === section ? null : section);
   };
 
-  const coverage = mockCoverage;
-  const benefits = mockBenefits;
+  const benefits = coverageData?.benefits || [];
 
   const sections = [
-    { key: 'medical', titleAr: '\u0637\u0628\u064a', titleEn: 'Medical', icon: 'medkit', copay: '20%', preAuth: t('\u0645\u0637\u0644\u0648\u0628 \u0644\u0644\u062c\u0631\u0627\u062d\u0629', 'Required for surgery') },
+    { key: 'medical', titleAr: '\u0637\u0628\u064a', titleEn: 'Medical', icon: 'medkit', copay: `${coverageData?.copay_percentage || 20}%`, preAuth: t('\u0645\u0637\u0644\u0648\u0628 \u0644\u0644\u062c\u0631\u0627\u062d\u0629', 'Required for surgery') },
     { key: 'dental', titleAr: '\u0623\u0633\u0646\u0627\u0646', titleEn: 'Dental', icon: 'body', copay: '30%', preAuth: t('\u063a\u064a\u0631 \u0645\u0637\u0644\u0648\u0628', 'Not required') },
     { key: 'vision', titleAr: '\u0628\u0635\u0631\u064a\u0627\u062a', titleEn: 'Vision', icon: 'eye', copay: '25%', preAuth: t('\u063a\u064a\u0631 \u0645\u0637\u0644\u0648\u0628', 'Not required') },
     { key: 'pharmacy', titleAr: '\u0635\u064a\u062f\u0644\u0629', titleEn: 'Pharmacy', icon: 'flask', copay: '15%', preAuth: t('\u0645\u0637\u0644\u0648\u0628 \u0644\u0644\u0623\u062f\u0648\u064a\u0629 \u0627\u0644\u0645\u062a\u062e\u0635\u0635\u0629', 'Required for specialty drugs') },
@@ -81,35 +110,35 @@ export default function EligibilityScreen() {
           </Pressable>
         </GlassCard>
 
-        {hasResult && (
+        {eligResult && (
           <>
             <View style={styles.responseTimeRow}>
-              <Ionicons name="timer-outline" size={14} color={responseTime < 900 ? Colors.signalTeal : Colors.deepOrange} />
-              <Text style={[styles.responseTimeText, { color: responseTime < 900 ? Colors.signalTeal : Colors.deepOrange }]}>
-                {responseTime}ms {responseTime < 900 ? '\u2713' : '\u26A0'}
+              <Ionicons name="timer-outline" size={14} color={eligResult.response_time_ms < 500 ? Colors.signalTeal : Colors.deepOrange} />
+              <Text style={[styles.responseTimeText, { color: eligResult.response_time_ms < 500 ? Colors.signalTeal : Colors.deepOrange }]}>
+                {eligResult.response_time_ms}ms {eligResult.response_time_ms < 500 ? '\u2713' : '\u26A0'} ({eligResult.source})
               </Text>
             </View>
 
             <GlassCard variant="elevated" style={styles.resultCard}>
               <View style={styles.resultHeader}>
                 <View>
-                  <Text style={styles.resultTitle}>{t(coverage.insurerNameAr, coverage.insurerNameEn)}</Text>
-                  <Text style={styles.resultSubtitle}>{t(coverage.planNameAr, coverage.planNameEn)}</Text>
+                  <Text style={styles.resultTitle}>{eligResult.plan}</Text>
+                  <Text style={styles.resultSubtitle}>{eligResult.notes}</Text>
                 </View>
-                <StatusChip status="active" />
+                <StatusChip status={eligResult.eligible ? 'active' : 'expired'} />
               </View>
               <View style={styles.resultGrid}>
                 <View style={styles.resultGridItem}>
                   <Text style={styles.gridLabel}>{t('\u0627\u0644\u0634\u0628\u0643\u0629', 'Network')}</Text>
-                  <Text style={styles.gridValue}>{coverage.networkTier}</Text>
+                  <Text style={styles.gridValue}>{eligResult.coverage.network}</Text>
                 </View>
                 <View style={styles.resultGridItem}>
                   <Text style={styles.gridLabel}>{t('\u0627\u0644\u0645\u0634\u0627\u0631\u0643\u0629', 'Copay')}</Text>
-                  <Text style={styles.gridValue}>{coverage.copayPercentage}%</Text>
+                  <Text style={styles.gridValue}>{eligResult.coverage.copay ? `${Math.round(eligResult.coverage.copay * 100)}%` : '—'}</Text>
                 </View>
                 <View style={styles.resultGridItem}>
-                  <Text style={styles.gridLabel}>{t('\u0627\u0644\u0645\u062e\u0635\u0648\u0645', 'Deductible')}</Text>
-                  <Text style={styles.gridValue}>{coverage.deductibleUsed}/{coverage.deductibleTotal}</Text>
+                  <Text style={styles.gridLabel}>{t('\u0627\u0644\u0645\u062e\u0635\u0648\u0645 \u0627\u0644\u0645\u062a\u0628\u0642\u064a', 'Deductible Left')}</Text>
+                  <Text style={styles.gridValue}>{eligResult.coverage.deductibleRemaining?.toLocaleString() || '—'} SAR</Text>
                 </View>
               </View>
             </GlassCard>

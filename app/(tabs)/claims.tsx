@@ -1,15 +1,17 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View, FlatList, Pressable, Platform } from 'react-native';
+import { StyleSheet, Text, View, FlatList, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 import { StatusChip } from '@/components/StatusChip';
-import { mockClaims, type Claim } from '@/lib/mock-data';
+import { apiRequest } from '@/lib/query-client';
 
 type FilterType = 'all' | 'submitted' | 'processing' | 'approved' | 'rejected';
 
@@ -21,11 +23,24 @@ const filters: { key: FilterType; ar: string; en: string }[] = [
   { key: 'rejected', ar: '\u0645\u0631\u0641\u0648\u0636', en: 'Rejected' },
 ];
 
-function ClaimItem({ claim }: { claim: Claim }) {
+interface ClaimDisplay {
+  id: string;
+  claimNumber: string;
+  status: string;
+  serviceDate: string;
+  providerNameAr: string;
+  providerNameEn: string;
+  diagnosisAr: string;
+  diagnosisEn: string;
+  amountClaimed: number;
+  amountApproved: number;
+}
+
+function ClaimItem({ claim }: { claim: ClaimDisplay }) {
   const { t } = useLanguage();
 
   return (
-    <Pressable onPress={() => router.push({ pathname: '/claims/[id]', params: { id: claim.id } })}>
+    <Pressable onPress={() => router.push({ pathname: '/claims/[id]', params: { id: claim.claimNumber } })}>
       <GlassCard variant="surface" style={styles.claimCard} padding={16}>
         <View style={styles.claimHeader}>
           <Text style={styles.claimNumber}>{claim.claimNumber}</Text>
@@ -59,12 +74,34 @@ function ClaimItem({ claim }: { claim: Claim }) {
 export default function ClaimsScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
+  const { data: claimsData, isLoading } = useQuery({
+    queryKey: ['/api/claims'],
+    queryFn: async () => {
+      const res = await apiRequest('GET', `/api/claims?memberId=${user?.memberId || 'MEM-2024-001'}`);
+      return res.json();
+    },
+  });
+
+  const allClaims: ClaimDisplay[] = (claimsData?.claims || []).map((c: any) => ({
+    id: c.claim_number || String(c.id),
+    claimNumber: c.claim_number,
+    status: c.status,
+    serviceDate: c.service_date ? new Date(c.service_date).toISOString().split('T')[0] : '',
+    providerNameAr: c.provider_name_ar || c.diagnosis_desc_ar || '',
+    providerNameEn: c.provider_name_en || 'Provider',
+    diagnosisAr: c.diagnosis_desc_ar || '',
+    diagnosisEn: c.diagnosis_desc_en || '',
+    amountClaimed: c.amount_claimed || 0,
+    amountApproved: c.amount_approved || 0,
+  }));
+
   const filteredClaims = activeFilter === 'all'
-    ? mockClaims
-    : mockClaims.filter(c => c.status === activeFilter);
+    ? allClaims
+    : allClaims.filter(c => c.status === activeFilter);
 
   return (
     <View style={styles.container}>

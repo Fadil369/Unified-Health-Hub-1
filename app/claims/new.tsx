@@ -1,39 +1,85 @@
-import { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, TextInput, Pressable, Platform, Alert } from 'react-native';
+import { useState, useCallback } from 'react';
+import { StyleSheet, Text, View, ScrollView, TextInput, Pressable, Platform, Alert, FlatList } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
+import { apiRequest } from '@/lib/query-client';
 
 const steps = [
-  { key: 'provider', titleAr: '\u0645\u0642\u062f\u0645 \u0627\u0644\u062e\u062f\u0645\u0629', titleEn: 'Provider' },
-  { key: 'service', titleAr: '\u0627\u0644\u062e\u062f\u0645\u0629', titleEn: 'Service' },
-  { key: 'charges', titleAr: '\u0627\u0644\u0631\u0633\u0648\u0645', titleEn: 'Charges' },
-  { key: 'review', titleAr: '\u0645\u0631\u0627\u062c\u0639\u0629', titleEn: 'Review' },
+  { key: 'provider', titleAr: 'مقدم الخدمة', titleEn: 'Provider' },
+  { key: 'service', titleAr: 'الخدمة', titleEn: 'Service' },
+  { key: 'charges', titleAr: 'الرسوم', titleEn: 'Charges' },
+  { key: 'review', titleAr: 'مراجعة', titleEn: 'Review' },
 ];
+
+interface SBSCode {
+  sbs_id: string;
+  sbs_code: string;
+  description_en: string;
+  description_ar: string;
+  category_name: string;
+  unit_price: number;
+  requires_prior_auth: boolean;
+}
+
+interface Provider {
+  id: number;
+  name_en: string;
+  name_ar: string;
+  provider_type: string;
+  city: string;
+}
 
 export default function NewClaimScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
+  const { user } = useAuth();
+  const qc = useQueryClient();
   const [currentStep, setCurrentStep] = useState(0);
-  const [providerName, setProviderName] = useState('');
-  const [providerType, setProviderType] = useState<'facility' | 'practitioner'>('facility');
+  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
+  const [providerSearch, setProviderSearch] = useState('');
   const [serviceDate, setServiceDate] = useState('');
   const [diagnosisCode, setDiagnosisCode] = useState('');
   const [diagnosisDesc, setDiagnosisDesc] = useState('');
-  const [procedureCode, setProcedureCode] = useState('');
+  const [sbsSearch, setSbsSearch] = useState('');
+  const [selectedSBS, setSelectedSBS] = useState<SBSCode | null>(null);
   const [amount, setAmount] = useState('');
   const [priorAuthRef, setPriorAuthRef] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
+  const { data: providersData } = useQuery({
+    queryKey: ['/api/providers'],
+  });
+
+  const { data: sbsResults } = useQuery({
+    queryKey: ['/api/sbs/search', sbsSearch],
+    queryFn: async () => {
+      if (!sbsSearch || sbsSearch.length < 2) return { codes: [] };
+      const res = await apiRequest('GET', `/api/sbs/search?q=${encodeURIComponent(sbsSearch)}&limit=8`);
+      return res.json();
+    },
+    enabled: sbsSearch.length >= 2,
+  });
+
+  const providers: Provider[] = providersData?.providers || providersData || [];
+  const filteredProviders = providerSearch.length > 0
+    ? providers.filter(p =>
+        p.name_en.toLowerCase().includes(providerSearch.toLowerCase()) ||
+        p.name_ar.includes(providerSearch)
+      )
+    : providers;
+
   const canProceed = () => {
     switch (currentStep) {
-      case 0: return providerName.trim().length > 0;
+      case 0: return selectedProvider !== null;
       case 1: return serviceDate.trim().length > 0 && diagnosisCode.trim().length > 0;
       case 2: return amount.trim().length > 0 && parseFloat(amount) > 0;
       case 3: return true;
@@ -56,17 +102,47 @@ export default function NewClaimScreen() {
     }
   };
 
+  const handleSelectSBS = useCallback((code: SBSCode) => {
+    setSelectedSBS(code);
+    setSbsSearch('');
+    if (code.unit_price > 0) {
+      setAmount(String(code.unit_price));
+    }
+  }, []);
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      const res = await apiRequest('POST', '/api/claims', {
+        memberId: user?.memberId || 'MEM-2024-001',
+        providerId: selectedProvider?.id || 1,
+        serviceDate,
+        diagnosisCode,
+        diagnosisDescEn: diagnosisDesc || selectedSBS?.description_en || '',
+        diagnosisDescAr: selectedSBS?.description_ar || '',
+        sbsCode: selectedSBS?.sbs_code || null,
+        amount: parseFloat(amount),
+        priorAuthRef: priorAuthRef || null,
+      });
+      const data = await res.json();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      qc.invalidateQueries({ queryKey: ['/api/claims'] });
+      Alert.alert(
+        t('تم الإرسال', 'Claim Submitted'),
+        t(
+          `تم إرسال المطالبة ${data.claim?.claim_number || ''} بنجاح`,
+          `Claim ${data.claim?.claim_number || ''} submitted successfully`
+        ),
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+    } catch (err: any) {
+      Alert.alert(
+        t('خطأ', 'Error'),
+        err.message || t('فشل الإرسال', 'Submission failed'),
+      );
+    }
     setIsSubmitting(false);
-    Alert.alert(
-      t('\u062a\u0645 \u0627\u0644\u0625\u0631\u0633\u0627\u0644', 'Claim Submitted'),
-      t('\u062a\u0645 \u0625\u0631\u0633\u0627\u0644 \u0645\u0637\u0627\u0644\u0628\u062a\u0643 \u0628\u0646\u062c\u0627\u062d', 'Your claim has been submitted successfully'),
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
   };
 
   const renderStep = () => {
@@ -74,42 +150,45 @@ export default function NewClaimScreen() {
       case 0:
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>{t('\u0627\u062e\u062a\u064a\u0627\u0631 \u0645\u0642\u062f\u0645 \u0627\u0644\u062e\u062f\u0645\u0629', 'Select Provider')}</Text>
-            <View style={styles.typeRow}>
-              <Pressable
-                style={[styles.typeButton, providerType === 'facility' && styles.typeActive]}
-                onPress={() => setProviderType('facility')}
-              >
-                <Ionicons name="business" size={18} color={providerType === 'facility' ? '#fff' : Colors.textSecondary} />
-                <Text style={[styles.typeText, providerType === 'facility' && styles.typeTextActive]}>
-                  {t('\u0645\u0646\u0634\u0623\u0629', 'Facility')}
-                </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.typeButton, providerType === 'practitioner' && styles.typeActive]}
-                onPress={() => setProviderType('practitioner')}
-              >
-                <Ionicons name="person" size={18} color={providerType === 'practitioner' ? '#fff' : Colors.textSecondary} />
-                <Text style={[styles.typeText, providerType === 'practitioner' && styles.typeTextActive]}>
-                  {t('\u0637\u0628\u064a\u0628', 'Practitioner')}
-                </Text>
-              </Pressable>
-            </View>
-            <Text style={styles.fieldLabel}>{t('\u0627\u0633\u0645 \u0645\u0642\u062f\u0645 \u0627\u0644\u062e\u062f\u0645\u0629', 'Provider Name')}</Text>
+            <Text style={styles.stepTitle}>{t('اختيار مقدم الخدمة', 'Select Provider')}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder={t('\u0627\u0628\u062d\u062b \u0639\u0646 \u0645\u0642\u062f\u0645 \u0627\u0644\u062e\u062f\u0645\u0629', 'Search provider')}
+              placeholder={t('ابحث عن مقدم الخدمة', 'Search provider')}
               placeholderTextColor={Colors.professionalGray}
-              value={providerName}
-              onChangeText={setProviderName}
+              value={providerSearch}
+              onChangeText={setProviderSearch}
             />
+            {filteredProviders.slice(0, 6).map((p) => (
+              <Pressable
+                key={p.id}
+                style={[styles.providerItem, selectedProvider?.id === p.id && styles.providerItemActive]}
+                onPress={() => { setSelectedProvider(p); Haptics.selectionAsync(); }}
+              >
+                <Ionicons
+                  name={p.provider_type === 'hospital' ? 'business' : 'medkit'}
+                  size={18}
+                  color={selectedProvider?.id === p.id ? '#fff' : Colors.textSecondary}
+                />
+                <View style={styles.providerInfo}>
+                  <Text style={[styles.providerName, selectedProvider?.id === p.id && { color: '#fff' }]}>
+                    {t(p.name_ar, p.name_en)}
+                  </Text>
+                  <Text style={[styles.providerCity, selectedProvider?.id === p.id && { color: 'rgba(255,255,255,0.7)' }]}>
+                    {p.city} · {p.provider_type}
+                  </Text>
+                </View>
+                {selectedProvider?.id === p.id && (
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                )}
+              </Pressable>
+            ))}
           </View>
         );
       case 1:
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>{t('\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u062e\u062f\u0645\u0629', 'Service Details')}</Text>
-            <Text style={styles.fieldLabel}>{t('\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u062e\u062f\u0645\u0629', 'Service Date')}</Text>
+            <Text style={styles.stepTitle}>{t('تفاصيل الخدمة', 'Service Details')}</Text>
+            <Text style={styles.fieldLabel}>{t('تاريخ الخدمة', 'Service Date')}</Text>
             <TextInput
               style={styles.textInput}
               placeholder="YYYY-MM-DD"
@@ -117,38 +196,75 @@ export default function NewClaimScreen() {
               value={serviceDate}
               onChangeText={setServiceDate}
             />
-            <Text style={styles.fieldLabel}>{t('\u0631\u0645\u0632 \u0627\u0644\u062a\u0634\u062e\u064a\u0635 (ICD-10)', 'Diagnosis Code (ICD-10)')}</Text>
+            <Text style={styles.fieldLabel}>{t('رمز التشخيص (ICD-10)', 'Diagnosis Code (ICD-10)')}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder={t('\u0645\u062b\u0627\u0644: M54.5', 'e.g., M54.5')}
+              placeholder={t('مثال: M54.5', 'e.g., M54.5')}
               placeholderTextColor={Colors.professionalGray}
               value={diagnosisCode}
               onChangeText={setDiagnosisCode}
               autoCapitalize="characters"
             />
-            <Text style={styles.fieldLabel}>{t('\u0648\u0635\u0641 \u0627\u0644\u062a\u0634\u062e\u064a\u0635', 'Diagnosis Description')}</Text>
+            <Text style={styles.fieldLabel}>{t('رمز الإجراء SBS', 'SBS Procedure Code')}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder={t('\u0648\u0635\u0641 \u0627\u0644\u062a\u0634\u062e\u064a\u0635', 'Describe the diagnosis')}
+              placeholder={t('ابحث عن رمز SBS...', 'Search SBS code...')}
+              placeholderTextColor={Colors.professionalGray}
+              value={selectedSBS ? `${selectedSBS.sbs_code} - ${t(selectedSBS.description_ar, selectedSBS.description_en)}` : sbsSearch}
+              onChangeText={(text) => {
+                if (selectedSBS) setSelectedSBS(null);
+                setSbsSearch(text);
+              }}
+            />
+            {(sbsResults?.codes || []).length > 0 && !selectedSBS && (
+              <GlassCard variant="surface" padding={0} style={styles.sbsDropdown}>
+                {sbsResults.codes.map((code: SBSCode) => (
+                  <Pressable
+                    key={code.sbs_id}
+                    style={styles.sbsItem}
+                    onPress={() => handleSelectSBS(code)}
+                  >
+                    <View style={styles.sbsItemLeft}>
+                      <Text style={styles.sbsItemCode}>{code.sbs_code}</Text>
+                      <Text style={styles.sbsItemDesc} numberOfLines={1}>
+                        {t(code.description_ar, code.description_en)}
+                      </Text>
+                    </View>
+                    {code.requires_prior_auth && (
+                      <View style={styles.priorAuthBadge}>
+                        <Text style={styles.priorAuthBadgeText}>PA</Text>
+                      </View>
+                    )}
+                    {code.unit_price > 0 && (
+                      <Text style={styles.sbsItemPrice}>{code.unit_price} SAR</Text>
+                    )}
+                  </Pressable>
+                ))}
+              </GlassCard>
+            )}
+            {selectedSBS?.requires_prior_auth && (
+              <View style={styles.warningBanner}>
+                <Ionicons name="warning" size={16} color={Colors.warning} />
+                <Text style={styles.warningText}>
+                  {t('هذا الإجراء يتطلب تفويض مسبق', 'This procedure requires prior authorization')}
+                </Text>
+              </View>
+            )}
+            <Text style={styles.fieldLabel}>{t('وصف التشخيص', 'Diagnosis Description')}</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder={t('وصف التشخيص', 'Describe the diagnosis')}
               placeholderTextColor={Colors.professionalGray}
               value={diagnosisDesc}
               onChangeText={setDiagnosisDesc}
-            />
-            <Text style={styles.fieldLabel}>{t('\u0631\u0645\u0632 \u0627\u0644\u0625\u062c\u0631\u0627\u0621', 'Procedure Code')}</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder={t('\u0645\u062b\u0627\u0644: 99213', 'e.g., 99213')}
-              placeholderTextColor={Colors.professionalGray}
-              value={procedureCode}
-              onChangeText={setProcedureCode}
             />
           </View>
         );
       case 2:
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>{t('\u0627\u0644\u0631\u0633\u0648\u0645', 'Charges')}</Text>
-            <Text style={styles.fieldLabel}>{t('\u0627\u0644\u0645\u0628\u0644\u063a (SAR)', 'Amount (SAR)')}</Text>
+            <Text style={styles.stepTitle}>{t('الرسوم', 'Charges')}</Text>
+            <Text style={styles.fieldLabel}>{t('المبلغ (SAR)', 'Amount (SAR)')}</Text>
             <TextInput
               style={styles.textInput}
               placeholder="0.00"
@@ -157,10 +273,10 @@ export default function NewClaimScreen() {
               onChangeText={setAmount}
               keyboardType="decimal-pad"
             />
-            <Text style={styles.fieldLabel}>{t('\u0631\u0642\u0645 \u0627\u0644\u062a\u0641\u0648\u064a\u0636 \u0627\u0644\u0645\u0633\u0628\u0642', 'Prior Auth Reference')}</Text>
+            <Text style={styles.fieldLabel}>{t('رقم التفويض المسبق', 'Prior Auth Reference')}</Text>
             <TextInput
               style={styles.textInput}
-              placeholder={t('\u0627\u062e\u062a\u064a\u0627\u0631\u064a', 'Optional')}
+              placeholder={t('اختياري', 'Optional')}
               placeholderTextColor={Colors.professionalGray}
               value={priorAuthRef}
               onChangeText={setPriorAuthRef}
@@ -170,22 +286,28 @@ export default function NewClaimScreen() {
       case 3:
         return (
           <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>{t('\u0645\u0631\u0627\u062c\u0639\u0629 \u0627\u0644\u0645\u0637\u0627\u0644\u0628\u0629', 'Review Claim')}</Text>
+            <Text style={styles.stepTitle}>{t('مراجعة المطالبة', 'Review Claim')}</Text>
             <GlassCard variant="surface" padding={14}>
               <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel}>{t('\u0645\u0642\u062f\u0645 \u0627\u0644\u062e\u062f\u0645\u0629', 'Provider')}</Text>
-                <Text style={styles.reviewValue}>{providerName}</Text>
+                <Text style={styles.reviewLabel}>{t('مقدم الخدمة', 'Provider')}</Text>
+                <Text style={styles.reviewValue}>{selectedProvider ? t(selectedProvider.name_ar, selectedProvider.name_en) : ''}</Text>
               </View>
               <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel}>{t('\u0627\u0644\u062a\u0627\u0631\u064a\u062e', 'Date')}</Text>
+                <Text style={styles.reviewLabel}>{t('التاريخ', 'Date')}</Text>
                 <Text style={styles.reviewValue}>{serviceDate}</Text>
               </View>
               <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel}>{t('\u0627\u0644\u062a\u0634\u062e\u064a\u0635', 'Diagnosis')}</Text>
+                <Text style={styles.reviewLabel}>{t('التشخيص', 'Diagnosis')}</Text>
                 <Text style={styles.reviewValue}>{diagnosisCode}</Text>
               </View>
+              {selectedSBS && (
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel}>{t('رمز SBS', 'SBS Code')}</Text>
+                  <Text style={[styles.reviewValue, { color: Colors.signalTeal }]}>{selectedSBS.sbs_code}</Text>
+                </View>
+              )}
               <View style={styles.reviewRow}>
-                <Text style={styles.reviewLabel}>{t('\u0627\u0644\u0645\u0628\u0644\u063a', 'Amount')}</Text>
+                <Text style={styles.reviewLabel}>{t('المبلغ', 'Amount')}</Text>
                 <Text style={[styles.reviewValue, { color: Colors.signalTeal }]}>{amount} SAR</Text>
               </View>
             </GlassCard>
@@ -201,7 +323,7 @@ export default function NewClaimScreen() {
         <Pressable onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
         </Pressable>
-        <Text style={styles.topBarTitle}>{t('\u0645\u0637\u0627\u0644\u0628\u0629 \u062c\u062f\u064a\u062f\u0629', 'New Claim')}</Text>
+        <Text style={styles.topBarTitle}>{t('مطالبة جديدة', 'New Claim')}</Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -236,7 +358,7 @@ export default function NewClaimScreen() {
             onPress={handleNext}
             disabled={!canProceed()}
           >
-            <Text style={styles.nextText}>{t('\u0627\u0644\u062a\u0627\u0644\u064a', 'Next')}</Text>
+            <Text style={styles.nextText}>{t('التالي', 'Next')}</Text>
             <Ionicons name="arrow-forward" size={18} color="#fff" />
           </Pressable>
         ) : (
@@ -247,7 +369,7 @@ export default function NewClaimScreen() {
           >
             <Ionicons name="checkmark-circle" size={20} color="#fff" />
             <Text style={styles.nextText}>
-              {isSubmitting ? t('\u062c\u0627\u0631\u064a \u0627\u0644\u0625\u0631\u0633\u0627\u0644...', 'Submitting...') : t('\u0625\u0631\u0633\u0627\u0644 \u0627\u0644\u0645\u0637\u0627\u0644\u0628\u0629', 'Submit Claim')}
+              {isSubmitting ? t('جاري الإرسال...', 'Submitting...') : t('إرسال المطالبة', 'Submit Claim')}
             </Text>
           </Pressable>
         )}
@@ -352,32 +474,89 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
-  typeRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  typeButton: {
-    flex: 1,
+  providerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
+    gap: 12,
     paddingVertical: 12,
+    paddingHorizontal: 14,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
-  typeActive: {
+  providerItemActive: {
     backgroundColor: Colors.signalTeal,
     borderColor: Colors.signalTeal,
   },
-  typeText: {
+  providerInfo: { flex: 1 },
+  providerName: {
     fontSize: 14,
-    fontFamily: 'Inter_500Medium',
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.textPrimary,
+  },
+  providerCity: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
     color: Colors.textSecondary,
   },
-  typeTextActive: { color: '#fff' },
+  sbsDropdown: {
+    maxHeight: 250,
+    overflow: 'hidden',
+  },
+  sbsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  sbsItemLeft: { flex: 1 },
+  sbsItemCode: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.signalTeal,
+  },
+  sbsItemDesc: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textSecondary,
+  },
+  sbsItemPrice: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.textPrimary,
+    marginLeft: 8,
+  },
+  priorAuthBadge: {
+    backgroundColor: `${Colors.warning}30`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  priorAuthBadgeText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.warning,
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: `${Colors.warning}15`,
+    borderWidth: 1,
+    borderColor: `${Colors.warning}30`,
+  },
+  warningText: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: Colors.warning,
+    flex: 1,
+  },
   reviewRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

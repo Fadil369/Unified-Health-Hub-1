@@ -1,19 +1,19 @@
-import { StyleSheet, Text, View, ScrollView, Pressable, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { GlassCard } from '@/components/GlassCard';
 import { StatusChip } from '@/components/StatusChip';
-import { mockClaims } from '@/lib/mock-data';
 
 const timelineSteps = [
-  { key: 'submitted', ar: '\u062a\u0645 \u0627\u0644\u0625\u0631\u0633\u0627\u0644', en: 'Submitted', icon: 'paper-plane' },
-  { key: 'processing', ar: '\u0642\u064a\u062f \u0627\u0644\u0645\u0639\u0627\u0644\u062c\u0629', en: 'Processing', icon: 'hourglass' },
-  { key: 'adjudicated', ar: '\u062a\u0645 \u0627\u0644\u062a\u062d\u0643\u064a\u0645', en: 'Adjudicated', icon: 'checkmark-done' },
-  { key: 'paid', ar: '\u062a\u0645 \u0627\u0644\u062f\u0641\u0639', en: 'Paid', icon: 'card' },
+  { key: 'submitted', ar: 'تم الإرسال', en: 'Submitted', icon: 'paper-plane' },
+  { key: 'processing', ar: 'قيد المعالجة', en: 'Processing', icon: 'hourglass' },
+  { key: 'adjudicated', ar: 'تم التحكيم', en: 'Adjudicated', icon: 'checkmark-done' },
+  { key: 'paid', ar: 'تم الدفع', en: 'Paid', icon: 'card' },
 ];
 
 function getTimelineIndex(status: string): number {
@@ -30,9 +30,40 @@ export default function ClaimDetailScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const claim = mockClaims.find(c => c.id === id) || mockClaims[0];
-  const activeStep = getTimelineIndex(claim.status);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
+
+  const { data: claimData, isLoading } = useQuery({
+    queryKey: ['/api/claims', id],
+  });
+
+  if (isLoading || !claimData) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={[Colors.midnightBlue, '#0f2240', '#0a1628']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={Colors.signalTeal} />
+      </View>
+    );
+  }
+
+  const claim = {
+    claimNumber: claimData.claim_number || id,
+    status: claimData.status || 'submitted',
+    serviceDate: claimData.service_date ? new Date(claimData.service_date).toISOString().split('T')[0] : '',
+    providerNameAr: claimData.provider_name_ar || claimData.diagnosis_desc_ar || '',
+    providerNameEn: claimData.provider_name_en || 'Provider',
+    diagnosisAr: claimData.diagnosis_desc_ar || '',
+    diagnosisEn: claimData.diagnosis_desc_en || '',
+    amountClaimed: claimData.amount_claimed || 0,
+    amountApproved: claimData.amount_approved || 0,
+    lastUpdated: claimData.updated_at ? new Date(claimData.updated_at).toISOString().split('T')[0] : '',
+    denialReason: claimData.denial_reason || null,
+    pipelineStages: claimData.pipeline_stages || null,
+    sbsCode: claimData.sbs_code || null,
+    sbsDescEn: claimData.sbs_desc_en || null,
+    sbsDescAr: claimData.sbs_desc_ar || null,
+  };
+
+  const activeStep = getTimelineIndex(claim.status);
 
   return (
     <View style={styles.container}>
@@ -58,7 +89,20 @@ export default function ClaimDetailScreen() {
           <Text style={styles.claimDate}>{claim.serviceDate}</Text>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>{t('\u0627\u0644\u062c\u062f\u0648\u0644 \u0627\u0644\u0632\u0645\u0646\u064a', 'Timeline')}</Text>
+        {claim.sbsCode && (
+          <GlassCard variant="surface" style={styles.sbsCard} padding={14}>
+            <View style={styles.sbsRow}>
+              <Ionicons name="medical" size={16} color={Colors.signalTeal} />
+              <Text style={styles.sbsLabel}>{t('رمز SBS', 'SBS Code')}</Text>
+              <Text style={styles.sbsCode}>{claim.sbsCode}</Text>
+            </View>
+            {claim.sbsDescEn && (
+              <Text style={styles.sbsDesc}>{t(claim.sbsDescAr || '', claim.sbsDescEn)}</Text>
+            )}
+          </GlassCard>
+        )}
+
+        <Text style={styles.sectionTitle}>{t('الجدول الزمني', 'Timeline')}</Text>
         <GlassCard style={styles.timelineCard}>
           {timelineSteps.map((step, i) => {
             const isActive = i <= activeStep;
@@ -86,7 +130,7 @@ export default function ClaimDetailScreen() {
                 </View>
                 <View style={styles.timelineContent}>
                   <Text style={[styles.timelineLabel, isActive && styles.timelineLabelActive]}>
-                    {isRejected ? t('\u0645\u0631\u0641\u0648\u0636', 'Rejected') : t(step.ar, step.en)}
+                    {isRejected ? t('مرفوض', 'Rejected') : t(step.ar, step.en)}
                   </Text>
                   {isCurrent && <Text style={styles.timelineDate}>{claim.lastUpdated}</Text>}
                 </View>
@@ -95,22 +139,47 @@ export default function ClaimDetailScreen() {
           })}
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>{t('\u062a\u0641\u0627\u0635\u064a\u0644 \u0627\u0644\u0645\u0637\u0627\u0644\u0628\u0629', 'Claim Details')}</Text>
+        {claim.pipelineStages && (
+          <>
+            <Text style={styles.sectionTitle}>{t('مراحل المعالجة', 'Processing Pipeline')}</Text>
+            <GlassCard style={styles.detailsCard}>
+              {Object.entries(claim.pipelineStages).map(([stage, info]: [string, any]) => (
+                <View key={stage} style={styles.detailRow}>
+                  <View style={styles.pipelineStageRow}>
+                    <Ionicons
+                      name={info.status === 'completed' ? 'checkmark-circle' : info.status === 'failed' ? 'close-circle' : 'ellipse-outline'}
+                      size={16}
+                      color={info.status === 'completed' ? Colors.success : info.status === 'failed' ? Colors.error : Colors.professionalGray}
+                    />
+                    <Text style={styles.detailLabel}>{stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</Text>
+                  </View>
+                  <Text style={[styles.detailValue, {
+                    color: info.status === 'completed' ? Colors.success : info.status === 'failed' ? Colors.error : Colors.textSecondary
+                  }]}>
+                    {info.status}
+                  </Text>
+                </View>
+              ))}
+            </GlassCard>
+          </>
+        )}
+
+        <Text style={styles.sectionTitle}>{t('تفاصيل المطالبة', 'Claim Details')}</Text>
         <GlassCard style={styles.detailsCard}>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>{t('\u0627\u0644\u0645\u0628\u0644\u063a \u0627\u0644\u0645\u0637\u0627\u0644\u0628 \u0628\u0647', 'Amount Claimed')}</Text>
+            <Text style={styles.detailLabel}>{t('المبلغ المطالب به', 'Amount Claimed')}</Text>
             <Text style={styles.detailValue}>{claim.amountClaimed.toLocaleString()} SAR</Text>
           </View>
           {claim.amountApproved > 0 && (
             <>
               <View style={styles.detailDivider} />
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('\u0627\u0644\u0645\u0628\u0644\u063a \u0627\u0644\u0645\u0648\u0627\u0641\u0642 \u0639\u0644\u064a\u0647', 'Amount Approved')}</Text>
+                <Text style={styles.detailLabel}>{t('المبلغ الموافق عليه', 'Amount Approved')}</Text>
                 <Text style={[styles.detailValue, { color: Colors.success }]}>{claim.amountApproved.toLocaleString()} SAR</Text>
               </View>
               <View style={styles.detailDivider} />
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('\u0645\u0633\u0624\u0648\u0644\u064a\u0629 \u0627\u0644\u0645\u0631\u064a\u0636', 'Patient Responsibility')}</Text>
+                <Text style={styles.detailLabel}>{t('مسؤولية المريض', 'Patient Responsibility')}</Text>
                 <Text style={[styles.detailValue, { color: Colors.deepOrange }]}>
                   {(claim.amountClaimed - claim.amountApproved).toLocaleString()} SAR
                 </Text>
@@ -121,7 +190,7 @@ export default function ClaimDetailScreen() {
             <>
               <View style={styles.detailDivider} />
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>{t('\u0633\u0628\u0628 \u0627\u0644\u0631\u0641\u0636', 'Denial Reason')}</Text>
+                <Text style={styles.detailLabel}>{t('سبب الرفض', 'Denial Reason')}</Text>
                 <Text style={[styles.detailValue, { color: Colors.error }]}>{claim.denialReason}</Text>
               </View>
             </>
@@ -131,7 +200,7 @@ export default function ClaimDetailScreen() {
         {claim.status === 'rejected' && (
           <Pressable style={styles.appealButton}>
             <Ionicons name="arrow-redo" size={18} color="#fff" />
-            <Text style={styles.appealText}>{t('\u062a\u0642\u062f\u064a\u0645 \u0627\u0633\u062a\u0626\u0646\u0627\u0641', 'File Appeal')}</Text>
+            <Text style={styles.appealText}>{t('تقديم استئناف', 'File Appeal')}</Text>
           </Pressable>
         )}
 
@@ -140,7 +209,7 @@ export default function ClaimDetailScreen() {
           onPress={() => router.push('/ai-assistant')}
         >
           <Ionicons name="sparkles" size={18} color={Colors.signalTeal} />
-          <Text style={styles.aiButtonText}>{t('\u0627\u0633\u0623\u0644 \u0628\u0633\u0645\u0629 \u0639\u0646 \u0647\u0630\u0647 \u0627\u0644\u0645\u0637\u0627\u0644\u0628\u0629', 'Ask Basma about this claim')}</Text>
+          <Text style={styles.aiButtonText}>{t('اسأل بسمة عن هذه المطالبة', 'Ask Basma about this claim')}</Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -194,6 +263,29 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: Colors.professionalGray,
     marginTop: 2,
+  },
+  sbsCard: { marginBottom: 16 },
+  sbsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  sbsLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textSecondary,
+  },
+  sbsCode: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: Colors.signalTeal,
+  },
+  sbsDesc: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textSecondary,
+    marginTop: 4,
   },
   sectionTitle: {
     fontSize: 17,
@@ -253,6 +345,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 6,
+  },
+  pipelineStageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   detailLabel: {
     fontSize: 13,

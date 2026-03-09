@@ -161,6 +161,7 @@ export default function DashboardScreen() {
           <QuickAction icon="clipboard-outline" label={t('\u062a\u0641\u0648\u064a\u0636 \u0645\u0633\u0628\u0642', 'Prior Auth')} onPress={() => router.push('/prior-auth')} color={Colors.deepOrange} />
           <QuickAction icon="star-outline" label={t('\u0627\u0633\u062a\u062d\u0642\u0627\u0642\u0627\u062a\u064a', 'My Benefits')} onPress={() => router.push('/(tabs)/wallet')} color={Colors.success} />
           <QuickAction icon="chatbubble-ellipses-outline" label={t('\u0645\u0633\u0627\u0639\u062f \u0630\u0643\u064a', 'AI Assistant')} onPress={() => router.push('/ai-assistant')} color={Colors.signalTeal} />
+          <QuickAction icon="business-outline" label={t('\u0628\u0648\u0627\u0628\u0627\u062a', 'Portals')} onPress={() => router.push('/(tabs)/portals')} color={Colors.medicalBlue} />
         </ScrollView>
 
         <Text style={styles.sectionTitle}>{t('\u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u0623\u062e\u064a\u0631', 'Recent Activity')}</Text>

@@ -26,6 +26,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: "wallet.pass", selected: "wallet.pass.fill" }} />
         <Label>Wallet</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="portals">
+        <Icon sf={{ default: "building.2", selected: "building.2.fill" }} />
+        <Label>Portals</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
@@ -93,6 +97,15 @@ function ClassicTabLayout() {
           title: "Wallet",
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "wallet" : "wallet-outline"} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="portals"
+        options={{
+          title: "Portals",
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "business" : "business-outline"} size={22} color={color} />
           ),
         }}
       />

@@ -440,8 +440,8 @@ export default function PortalsScreen() {
             <Ionicons name="information-circle-outline" size={18} color={Colors.signalTeal} />
             <Text style={styles.infoText}>
               {t(
-                'جميع البوابات تعمل عبر Enhanced-Tunnel (Cloudflare). آخر تحقق: 09/03/2026',
-                'All portals route through Enhanced-Tunnel (Cloudflare). Last checked: 09/03/2026',
+                'جميع البوابات تعمل عبر Enhanced-Tunnel (Cloudflare).',
+                'All portals route through Enhanced-Tunnel (Cloudflare).',
               )}
             </Text>
           </View>

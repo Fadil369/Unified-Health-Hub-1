@@ -36,6 +36,7 @@ function RootLayoutNav() {
       <Stack.Screen name="prior-auth/new" options={{ headerShown: false }} />
       <Stack.Screen name="profile/index" options={{ headerShown: false }} />
       <Stack.Screen name="profile/settings" options={{ headerShown: false }} />
+      <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

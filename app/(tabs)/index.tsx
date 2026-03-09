@@ -34,6 +34,18 @@ export default function DashboardScreen() {
     enabled: isAuthenticated,
   });
 
+  const { data: notifData } = useQuery({
+    queryKey: ['/api/notifications/unread-count'],
+    queryFn: async () => {
+      const res = await apiRequest('GET', '/api/notifications/unread-count');
+      return res.json();
+    },
+    enabled: isAuthenticated,
+    refetchInterval: 60_000, // poll every minute
+  });
+
+  const unreadCount: number = notifData?.count ?? 0;
+
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace('/(auth)/login');
@@ -99,6 +111,20 @@ export default function DashboardScreen() {
           <View style={styles.headerRight}>
             <Pressable onPress={toggleLanguage} style={styles.headerIcon}>
               <Ionicons name="globe-outline" size={20} color={Colors.textSecondary} />
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/notifications');
+              }}
+              style={styles.headerIcon}
+            >
+              <Ionicons name="notifications-outline" size={20} color={Colors.textSecondary} />
+              {unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : String(unreadCount)}</Text>
+                </View>
+              )}
             </Pressable>
             <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/ai-assistant'); }} style={styles.headerIcon}>
               <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.signalTeal} />
@@ -242,6 +268,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.05)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.deepOrange ?? '#f97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    color: '#fff',
+    lineHeight: 12,
   },
   coverageCard: { marginBottom: 24 },
   coverageHeader: {

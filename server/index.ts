@@ -10,6 +10,64 @@ import * as path from "path";
 const app = express();
 const log = console.log;
 
+// ─── In-memory Rate Limiter ──────────────────────────────────────
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
+}
+
+function createRateLimiter(maxRequests: number, windowMs: number) {
+  // Each limiter instance owns its own store so limits are tracked independently
+  const store = new Map<string, RateLimitEntry>();
+
+  // Purge stale entries every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of store.entries()) {
+      if (now > entry.resetTime) store.delete(key);
+    }
+  }, 5 * 60 * 1000);
+
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim()
+      || req.socket?.remoteAddress
+      || "unknown";
+    const now = Date.now();
+    const entry = store.get(ip);
+
+    if (!entry || now > entry.resetTime) {
+      store.set(ip, { count: 1, resetTime: now + windowMs });
+      res.setHeader("X-RateLimit-Limit", maxRequests);
+      res.setHeader("X-RateLimit-Remaining", maxRequests - 1);
+      next();
+      return;
+    }
+
+    if (entry.count >= maxRequests) {
+      const retryAfter = Math.ceil((entry.resetTime - now) / 1000);
+      res.setHeader("X-RateLimit-Limit", maxRequests);
+      res.setHeader("X-RateLimit-Remaining", 0);
+      res.setHeader("X-RateLimit-Reset", Math.ceil(entry.resetTime / 1000));
+      res.setHeader("Retry-After", retryAfter);
+      res.status(429).json({
+        error: "Too many requests. Please try again later.",
+        retryAfter,
+      });
+      return;
+    }
+
+    entry.count++;
+    res.setHeader("X-RateLimit-Limit", maxRequests);
+    res.setHeader("X-RateLimit-Remaining", maxRequests - entry.count);
+    next();
+  };
+}
+
+// Route-specific rate limiters (each has its own independent store)
+const generalLimiter = createRateLimiter(150, 15 * 60 * 1000);   // 150 req / 15 min
+const authLimiter    = createRateLimiter(20,  15 * 60 * 1000);   // 20  req / 15 min
+const aiLimiter      = createRateLimiter(40,  15 * 60 * 1000);   // 40  req / 15 min
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -248,6 +306,11 @@ function setupErrorHandler(app: express.Application) {
 
 (async () => {
   setupCors(app);
+
+  // Apply rate limiters before routes
+  app.use("/api/auth", authLimiter);
+  app.use("/api/ai", aiLimiter);
+  app.use("/api", generalLimiter);
 
   app.post(
     "/api/stripe/webhook",

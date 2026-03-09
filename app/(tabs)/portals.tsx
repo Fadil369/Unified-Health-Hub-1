@@ -275,7 +275,24 @@ export default function PortalsScreen() {
             { text: t('إلغاء', 'Cancel'), style: 'cancel' },
             {
               text: t('فتح على أي حال', 'Open anyway'),
-              onPress: () => Linking.openURL(portal.url),
+              onPress: async () => {
+                try {
+                  const supported = await Linking.canOpenURL(portal.url);
+                  if (supported) {
+                    await Linking.openURL(portal.url);
+                  } else {
+                    Alert.alert(
+                      t('خطأ', 'Error'),
+                      t('لا يمكن فتح الرابط', 'Cannot open URL'),
+                    );
+                  }
+                } catch {
+                  Alert.alert(
+                    t('خطأ', 'Error'),
+                    t('لا يمكن فتح الرابط', 'Cannot open URL'),
+                  );
+                }
+              },
             },
           ],
         );

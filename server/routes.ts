@@ -956,7 +956,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               userRow.rows[0].id,
               `Your prior authorization request has been submitted for review. Ref: ${(auth as any).auth_number || (auth as any).id}`,
               `تم تقديم طلب التفويض المسبق الخاص بك للمراجعة. المرجع: ${(auth as any).auth_number || (auth as any).id}`,
-              JSON.stringify({ authId: (auth as any).id }),
+              { authId: (auth as any).id },
             ]
           );
         }

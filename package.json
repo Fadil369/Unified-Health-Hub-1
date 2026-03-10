@@ -81,7 +81,7 @@
     "@types/pg": "^8.18.0",
     "@types/react": "~19.1.10",
     "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
-    "drizzle-kit": "^0.31.4",
+    "drizzle-kit": "^0.31.8",
     "eslint": "^9.31.0",
     "eslint-config-expo": "~10.0.0",
     "patch-package": "^8.0.0",

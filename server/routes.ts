@@ -882,7 +882,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               userRow.rows[0].id,
               `Your claim has been submitted and is being processed. Claim number: ${(claim as any).claim_number}`,
               `تم تقديم مطالبتك وهي قيد المعالجة. رقم المطالبة: ${(claim as any).claim_number}`,
-              JSON.stringify({ claimId: (claim as any).id, claimNumber: (claim as any).claim_number }),
+              { claimId: (claim as any).id, claimNumber: (claim as any).claim_number },
             ]
           );
         }

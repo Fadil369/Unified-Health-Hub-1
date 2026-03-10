@@ -310,8 +310,20 @@ function setupErrorHandler(app: express.Application) {
   // Apply rate limiters before routes
   app.use("/api/auth", authLimiter);
   app.use("/api/ai", aiLimiter);
-  app.use("/api", generalLimiter);
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+    const path = req.path || "";
 
+    // Avoid double rate limiting for auth, AI, and health endpoints
+    if (
+      path.startsWith("/auth") ||
+      path.startsWith("/ai") ||
+      path.startsWith("/health")
+    ) {
+      return next();
+    }
+
+    return generalLimiter(req, res, next);
+  });
   app.post(
     "/api/stripe/webhook",
     express.raw({ type: "application/json" }),

@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import {
   searchSBSCodes,
   getSBSCode,
@@ -19,6 +20,51 @@ import {
 import pool from "./db";
 import { getGitHubUser, getGitHubUserEmails } from "./githubAuth";
 import { getUncachableStripeClient, getStripePublishableKey } from "./stripeClient";
+
+// ─── Zod Validation Schemas ──────────────────────────────────────
+const registerSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  nameEn: z.string().min(1).max(100).optional(),
+  nameAr: z.string().max(100).optional(),
+  phone: z.string().regex(/^\+?[\d\s\-()+]+$/, "Invalid phone number").optional(),
+});
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+const claimSchema = z.object({
+  memberId: z.string().min(1, "Member ID required"),
+  providerId: z.coerce.number().int().positive("Provider ID must be a positive integer"),
+  serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Service date must be YYYY-MM-DD"),
+  diagnosisCode: z.string().min(1, "Diagnosis code required"),
+  amount: z.coerce.number().positive("Amount must be positive").optional(),
+  sbsCode: z.string().optional(),
+  diagnosisDescEn: z.string().optional(),
+  diagnosisDescAr: z.string().optional(),
+  clinicalNotes: z.string().optional(),
+  priorAuthRef: z.string().optional(),
+  amountClaimed: z.coerce.number().positive().optional(),
+}).refine(
+  (data) => data.amount !== undefined || data.amountClaimed !== undefined,
+  { message: "Amount is required", path: ["amount"] }
+);
+
+const priorAuthSchema = z.object({
+  memberId: z.string().min(1, "Member ID required"),
+  diagnosisCode: z.string().min(1, "Diagnosis code required"),
+  providerId: z.coerce.number().int().positive().optional(),
+  serviceType: z.string().optional(),
+  sbsCode: z.string().optional(),
+  serviceDescEn: z.string().optional(),
+  serviceDescAr: z.string().optional(),
+  diagnosisDescEn: z.string().optional(),
+  diagnosisDescAr: z.string().optional(),
+  urgency: z.enum(["routine", "urgent", "emergency"]).optional(),
+  clinicalNotes: z.string().optional(),
+});
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -89,6 +135,183 @@ function generateMemberId(): string {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+
+  // ─── Initialise background jobs ──────────────────────────────────
+  // Purge expired sessions every hour
+  setInterval(async () => {
+    try {
+      const result = await pool.query("DELETE FROM user_sessions WHERE expires_at < NOW()");
+      if ((result.rowCount ?? 0) > 0) {
+        console.log(`[cleanup] Removed ${result.rowCount} expired session(s)`);
+      }
+    } catch (err) {
+      console.error("[cleanup] Session cleanup failed:", err);
+    }
+  }, 60 * 60 * 1000);
+
+  // Ensure notifications table exists (idempotent)
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_notifications (
+        id          SERIAL PRIMARY KEY,
+        user_id     TEXT NOT NULL,
+        type        TEXT NOT NULL DEFAULT 'info',
+        title_en    TEXT NOT NULL,
+        title_ar    TEXT,
+        body_en     TEXT NOT NULL,
+        body_ar     TEXT,
+        data        JSONB,
+        is_read     BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON user_notifications(user_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_notifications_unread ON user_notifications(user_id, is_read) WHERE is_read = FALSE;
+    `);
+
+    // Performance indexes on core tables
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_accounts_email ON user_accounts(email);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_accounts_member_id ON user_accounts(member_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_claims_member_id ON healthcare_claims(member_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_claims_claim_number ON healthcare_claims(claim_number);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_prior_auth_member_id ON prior_authorizations(member_id);
+    `);
+  } catch (setupErr) {
+    // Log but don't crash – tables may not exist yet on first boot
+    console.warn("[startup] Table/index setup warning (non-fatal):", setupErr);
+  }
+
+  // ─── Health Check ─────────────────────────────────────────────────
+
+  app.get("/api/health", async (_req: Request, res: Response) => {
+    let dbStatus = "healthy";
+    let dbLatencyMs = 0;
+    try {
+      const t0 = Date.now();
+      await pool.query("SELECT 1");
+      dbLatencyMs = Date.now() - t0;
+    } catch {
+      dbStatus = "unhealthy";
+    }
+    res.status(dbStatus === "healthy" ? 200 : 503).json({
+      status: dbStatus === "healthy" ? "ok" : "degraded",
+      timestamp: new Date().toISOString(),
+      uptime: Math.floor(process.uptime()),
+      version: "1.0.0",
+      services: {
+        database: { status: dbStatus, latencyMs: dbLatencyMs },
+      },
+    });
+  });
+
+  // ─── Notifications Routes ────────────────────────────────────────
+
+  app.get("/api/notifications", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromToken(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const rawLimit = Number.parseInt((req.query.limit as string) ?? "", 10);
+      const safeLimitBase = Number.isNaN(rawLimit) || rawLimit <= 0 ? 30 : rawLimit;
+      const limit = Math.min(safeLimitBase, 100);
+      const onlyUnread = req.query.unread === "true";
+
+      const where = onlyUnread ? "WHERE user_id = $1 AND is_read = FALSE" : "WHERE user_id = $1";
+      const result = await pool.query(
+        `SELECT * FROM user_notifications ${where} ORDER BY created_at DESC LIMIT $2`,
+        [user.id, limit]
+      );
+
+      const countResult = await pool.query(
+        "SELECT COUNT(*) FROM user_notifications WHERE user_id = $1 AND is_read = FALSE",
+        [user.id]
+      );
+
+      res.json({
+        notifications: result.rows,
+        unreadCount: parseInt(countResult.rows[0].count, 10),
+      });
+    } catch (error) {
+      console.error("Notifications fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  app.get("/api/notifications/unread-count", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromToken(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const result = await pool.query(
+        "SELECT COUNT(*) FROM user_notifications WHERE user_id = $1 AND is_read = FALSE",
+        [user.id]
+      );
+      res.json({ count: parseInt(result.rows[0].count, 10) });
+    } catch (error) {
+      console.error("Unread count error:", error);
+      res.status(500).json({ error: "Failed to get unread count" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromToken(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const notificationId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(notificationId)) {
+        return res.status(400).json({ error: "Invalid notification id" });
+      }
+
+      const result = await pool.query(
+        "UPDATE user_notifications SET is_read = TRUE, updated_at = NOW() WHERE id = $1 AND user_id = $2",
+        [notificationId, user.id]
+      );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Mark notification read error:", error);
+      res.status(500).json({ error: "Failed to mark notification as read" });
+    }
+  });
+
+  app.post("/api/notifications/mark-all-read", async (req: Request, res: Response) => {
+    try {
+      const user = await getUserFromToken(req);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const result = await pool.query(
+        "UPDATE user_notifications SET is_read = TRUE, updated_at = NOW() WHERE user_id = $1 AND is_read = FALSE",
+        [user.id]
+      );
+      res.json({ success: true, marked: result.rowCount ?? 0 });
+    } catch (error) {
+      console.error("Mark all read error:", error);
+      res.status(500).json({ error: "Failed to mark all notifications as read" });
+    }
+  });
 
   // ─── Auth Routes ────────────────────────────────────────────────
 
@@ -169,11 +392,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
-      const { email, password, nameEn, nameAr, phone } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ error: "Email and password required" });
+      const parsed = registerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: parsed.error.errors[0]?.message || "Invalid input",
+          details: parsed.error.errors,
+        });
       }
-
+      const { email, password, nameEn, nameAr, phone } = parsed.data;
       const existing = await pool.query("SELECT id FROM user_accounts WHERE email = $1", [email]);
       if (existing.rows[0]) {
         return res.status(409).json({ error: "Email already registered" });
@@ -226,10 +452,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
-      const { email, password } = req.body;
-      if (!email || !password) {
-        return res.status(400).json({ error: "Email and password required" });
+      const parsed = loginSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: parsed.error.errors[0]?.message || "Invalid input",
+          details: parsed.error.errors,
+        });
       }
+      const { email, password } = parsed.data;
 
       const userResult = await pool.query(
         "SELECT * FROM user_accounts WHERE email = $1",
@@ -611,6 +841,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/claims", async (req: Request, res: Response) => {
     try {
+      const parsed = claimSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: parsed.error.errors[0]?.message || "Invalid input",
+          details: parsed.error.errors,
+        });
+      }
+
       const {
         memberId,
         providerId,
@@ -620,29 +858,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         diagnosisDescEn,
         diagnosisDescAr,
         amount,
+        amountClaimed,
         clinicalNotes,
         priorAuthRef,
-      } = req.body;
+      } = parsed.data;
 
-      const claimAmount = amount || req.body.amountClaimed;
-      if (!memberId || !providerId || !serviceDate || !diagnosisCode || !claimAmount) {
-        return res.status(400).json({
-          error: "Missing required fields: memberId, providerId, serviceDate, diagnosisCode, amount",
-        });
+      const claimAmount = amount ?? amountClaimed;
+      // Zod refine ensures one of them is defined, but we add a guard for type safety
+      if (claimAmount === undefined || claimAmount <= 0) {
+        return res.status(400).json({ error: "A valid positive amount is required" });
       }
 
       const claim = await createClaim({
         memberId,
-        providerId,
+        providerId: Number(providerId),
         serviceDate,
         sbsCode: sbsCode || null,
         diagnosisCode,
         diagnosisDescEn: diagnosisDescEn || diagnosisCode,
         diagnosisDescAr,
-        amount: parseFloat(claimAmount),
+        amount: claimAmount,
         clinicalNotes,
         priorAuthRef,
       });
+
+      // Create welcome notification for new claim
+      try {
+        const userRow = await pool.query("SELECT id FROM user_accounts WHERE member_id = $1", [memberId]);
+        if (userRow.rows[0]) {
+          await pool.query(
+            `INSERT INTO user_notifications (user_id, type, title_en, title_ar, body_en, body_ar, data)
+             VALUES ($1, 'claim_submitted', 'Claim Submitted', 'تم تقديم المطالبة',
+               $2, $3, $4)`,
+            [
+              userRow.rows[0].id,
+              `Your claim has been submitted and is being processed. Claim number: ${(claim as any).claim_number}`,
+              `تم تقديم مطالبتك وهي قيد المعالجة. رقم المطالبة: ${(claim as any).claim_number}`,
+              { claimId: (claim as any).id, claimNumber: (claim as any).claim_number },
+            ]
+          );
+        }
+      } catch (_notifErr) {
+        // Non-fatal – notification creation should not block claim submission
+      }
 
       res.status(201).json(claim);
     } catch (error) {
@@ -664,6 +922,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/prior-auth", async (req: Request, res: Response) => {
     try {
+      const parsed = priorAuthSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          error: parsed.error.errors[0]?.message || "Invalid input",
+          details: parsed.error.errors,
+        });
+      }
+
       const {
         memberId,
         providerId,
@@ -676,17 +942,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         diagnosisDescAr,
         urgency,
         clinicalNotes,
-      } = req.body;
-
-      if (!memberId || !diagnosisCode) {
-        return res.status(400).json({
-          error: "Missing required fields: memberId, diagnosisCode",
-        });
-      }
+      } = parsed.data;
 
       const auth = await createPriorAuth({
         memberId,
-        providerId: providerId || 1,
+        providerId: Number(providerId) || 1,
         serviceType: serviceType || "procedure",
         sbsCode: sbsCode || null,
         serviceDescEn: serviceDescEn || "",
@@ -697,6 +957,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         urgency: urgency || "routine",
         clinicalNotes,
       });
+
+      // Notify user that prior-auth was submitted
+      try {
+        const userRow = await pool.query("SELECT id FROM user_accounts WHERE member_id = $1", [memberId]);
+        if (userRow.rows[0]) {
+          await pool.query(
+            `INSERT INTO user_notifications (user_id, type, title_en, title_ar, body_en, body_ar, data)
+             VALUES ($1, 'prior_auth_submitted', 'Prior Authorization Submitted', 'تم تقديم التفويض المسبق',
+               $2, $3, $4)`,
+            [
+              userRow.rows[0].id,
+              `Your prior authorization request has been submitted for review. Ref: ${(auth as any).auth_number || (auth as any).id}`,
+              `تم تقديم طلب التفويض المسبق الخاص بك للمراجعة. المرجع: ${(auth as any).auth_number || (auth as any).id}`,
+              { authId: (auth as any).id },
+            ]
+          );
+        }
+      } catch (_notifErr) {
+        // Non-fatal
+      }
 
       res.status(201).json(auth);
     } catch (error) {

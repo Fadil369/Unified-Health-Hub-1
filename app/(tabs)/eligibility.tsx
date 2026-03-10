@@ -13,6 +13,34 @@ import { BenefitBar } from '@/components/BenefitBar';
 import { StatusChip } from '@/components/StatusChip';
 import { apiRequest } from '@/lib/query-client';
 
+interface BenefitItem {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  used: number;
+  total: number;
+  icon: string;
+}
+
+interface CoverageData {
+  insurer_name_ar?: string;
+  insurer_name_en?: string;
+  plan_name_ar?: string;
+  plan_name_en?: string;
+  status?: string;
+  policy_number?: string;
+  member_id?: string;
+  start_date?: string;
+  end_date?: string;
+  network_tier?: string;
+  copay_percentage?: number;
+  deductible_used?: number;
+  deductible_total?: number;
+  oop_used?: number;
+  oop_max?: number;
+  benefits?: BenefitItem[];
+}
+
 interface EligibilityResult {
   eligible: boolean;
   member_id: string;
@@ -39,7 +67,7 @@ export default function EligibilityScreen() {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
-  const { data: coverageData } = useQuery({
+  const { data: coverageData } = useQuery<CoverageData>({
     queryKey: ['/api/coverage', user?.memberId || 'MEM-2024-001'],
   });
 
@@ -180,7 +208,7 @@ export default function EligibilityScreen() {
 
             <Text style={styles.sectionTitle}>{t('\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0627\u0644\u0627\u0633\u062a\u062d\u0642\u0627\u0642\u0627\u062a', 'Benefit Utilization')}</Text>
             <GlassCard style={styles.benefitsCard}>
-              {benefits.map((benefit, i) => (
+              {benefits.map((benefit: BenefitItem, i: number) => (
                 <View key={benefit.id}>
                   <BenefitBar
                     nameAr={benefit.nameAr}

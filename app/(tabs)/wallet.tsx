@@ -12,6 +12,52 @@ import { BenefitBar } from '@/components/BenefitBar';
 import { ProgressRing } from '@/components/ProgressRing';
 import { StatusChip } from '@/components/StatusChip';
 
+interface BenefitItem {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  used: number;
+  total: number;
+  icon: string;
+}
+
+interface CoverageData {
+  insurer_name_ar?: string;
+  insurer_name_en?: string;
+  plan_name_ar?: string;
+  plan_name_en?: string;
+  status?: string;
+  policy_number?: string;
+  member_id?: string;
+  start_date?: string;
+  end_date?: string;
+  network_tier?: string;
+  copay_percentage?: number;
+  deductible_used?: number;
+  deductible_total?: number;
+  oop_used?: number;
+  oop_max?: number;
+  benefits?: BenefitItem[];
+}
+
+interface PaymentSummary {
+  totalPaid?: number;
+  totalClaims?: number;
+  pendingCount?: number;
+}
+
+interface PaymentItem {
+  id: string;
+  claim_number?: string;
+  amount?: string;
+  status: string;
+}
+
+interface PaymentData {
+  payments?: PaymentItem[];
+  summary?: PaymentSummary;
+}
+
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
@@ -19,11 +65,11 @@ export default function WalletScreen() {
   const [isFlipped, setIsFlipped] = useState(false);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
-  const { data: coverageData, isLoading } = useQuery({
+  const { data: coverageData, isLoading } = useQuery<CoverageData>({
     queryKey: ['/api/coverage', user?.memberId || 'MEM-2024-001'],
   });
 
-  const { data: paymentData } = useQuery({
+  const { data: paymentData } = useQuery<PaymentData>({
     queryKey: ['/api/payments/history'],
   });
 
@@ -205,7 +251,7 @@ export default function WalletScreen() {
                   </View>
                   <View style={styles.paymentStatDivider} />
                   <View style={styles.paymentStat}>
-                    <Text style={[styles.paymentStatValue, paymentData.summary.pendingCount > 0 && { color: '#f59e0b' }]}>
+                    <Text style={[styles.paymentStatValue, (paymentData.summary?.pendingCount ?? 0) > 0 && { color: '#f59e0b' }]}>
                       {paymentData.summary.pendingCount || 0}
                     </Text>
                     <Text style={styles.paymentStatLabel}>{t('قيد الانتظار', 'Pending')}</Text>
@@ -213,7 +259,7 @@ export default function WalletScreen() {
                 </View>
               </GlassCard>
             )}
-            {paymentData.payments.slice(0, 5).map((p: any) => (
+            {paymentData?.payments?.slice(0, 5).map((p: PaymentItem) => (
               <GlassCard key={p.id} variant="surface" style={styles.docCard} padding={14}>
                 <View style={styles.docRow}>
                   <View style={[styles.docIcon, { backgroundColor: p.status === 'completed' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)' }]}>

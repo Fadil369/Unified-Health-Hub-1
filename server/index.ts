@@ -25,7 +25,8 @@ async function initStripe() {
 
   try {
     log("Initializing Stripe schema...");
-    await runMigrations({ databaseUrl, schema: "stripe" });
+    // 'schema' is not part of MigrationConfig; stripe-replit-sync manages its own schema internally
+    await runMigrations({ databaseUrl });
     log("Stripe schema ready");
 
     const stripeSync = await getStripeSync();
@@ -60,7 +61,7 @@ function setupCors(app: express.Application) {
     }
 
     if (process.env.REPLIT_DOMAINS) {
-      process.env.REPLIT_DOMAINS.split(",").forEach((d) => {
+      process.env.REPLIT_DOMAINS.split(",").forEach((d: string) => {
         origins.add(`https://${d.trim()}`);
       });
     }

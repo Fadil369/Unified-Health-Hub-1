@@ -37,6 +37,10 @@ interface Provider {
   city: string;
 }
 
+interface ProvidersData {
+  providers?: Provider[];
+}
+
 export default function NewClaimScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useLanguage();
@@ -55,7 +59,7 @@ export default function NewClaimScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
 
-  const { data: providersData } = useQuery({
+  const { data: providersData } = useQuery<ProvidersData>({
     queryKey: ['/api/providers'],
   });
 
@@ -69,7 +73,7 @@ export default function NewClaimScreen() {
     enabled: sbsSearch.length >= 2,
   });
 
-  const providers: Provider[] = providersData?.providers || providersData || [];
+  const providers: Provider[] = providersData?.providers || [];
   const filteredProviders = providerSearch.length > 0
     ? providers.filter(p =>
         p.name_en.toLowerCase().includes(providerSearch.toLowerCase()) ||

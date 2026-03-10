@@ -218,7 +218,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await getUserFromToken(req);
       if (!user) return res.status(401).json({ error: "Not authenticated" });
 
-      const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+      const rawLimit = Number.parseInt((req.query.limit as string) ?? "", 10);
+      const safeLimitBase = Number.isNaN(rawLimit) || rawLimit <= 0 ? 30 : rawLimit;
+      const limit = Math.min(safeLimitBase, 100);
       const onlyUnread = req.query.unread === "true";
 
       const where = onlyUnread ? "WHERE user_id = $1 AND is_read = FALSE" : "WHERE user_id = $1";

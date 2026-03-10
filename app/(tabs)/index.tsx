@@ -15,17 +15,36 @@ import { QuickAction } from '@/components/QuickAction';
 import { StatusChip } from '@/components/StatusChip';
 import { apiRequest } from '@/lib/query-client';
 
+interface CoverageData {
+  insurer_name_ar?: string;
+  insurer_name_en?: string;
+  plan_name_ar?: string;
+  plan_name_en?: string;
+  status?: string;
+  policy_number?: string;
+  member_id?: string;
+  end_date?: string;
+  deductible_used?: number;
+  deductible_total?: number;
+  oop_used?: number;
+  oop_max?: number;
+}
+
+interface ClaimsData {
+  claims?: any[];
+}
+
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, isLoading } = useAuth();
   const { t, toggleLanguage, language } = useLanguage();
 
-  const { data: coverageData } = useQuery({
+  const { data: coverageData } = useQuery<CoverageData>({
     queryKey: ['/api/coverage', user?.memberId || 'MEM-2024-001'],
     enabled: isAuthenticated,
   });
 
-  const { data: claimsData } = useQuery({
+  const { data: claimsData } = useQuery<ClaimsData>({
     queryKey: ['/api/claims'],
     queryFn: async () => {
       const res = await apiRequest('GET', `/api/claims?memberId=${user?.memberId || 'MEM-2024-001'}`);

@@ -13,6 +13,25 @@ import { GlassCard } from '@/components/GlassCard';
 import { StatusChip } from '@/components/StatusChip';
 import { apiRequest } from '@/lib/query-client';
 
+interface ClaimData {
+  id?: number;
+  claim_number?: string;
+  status?: string;
+  service_date?: string;
+  provider_name_ar?: string;
+  provider_name_en?: string;
+  diagnosis_desc_ar?: string;
+  diagnosis_desc_en?: string;
+  amount_claimed?: number;
+  amount_approved?: number;
+  updated_at?: string;
+  denial_reason?: string | null;
+  pipeline_stages?: Record<string, any> | null;
+  sbs_code?: string | null;
+  sbs_desc_en?: string | null;
+  sbs_desc_ar?: string | null;
+}
+
 const timelineSteps = [
   { key: 'submitted', ar: 'تم الإرسال', en: 'Submitted', icon: 'paper-plane' },
   { key: 'processing', ar: 'قيد المعالجة', en: 'Processing', icon: 'hourglass' },
@@ -38,7 +57,7 @@ export default function ClaimDetailScreen() {
   const webTopInset = Platform.OS === 'web' ? 67 : 0;
   const [isPaying, setIsPaying] = useState(false);
 
-  const { data: claimData, isLoading } = useQuery({
+  const { data: claimData, isLoading } = useQuery<ClaimData>({
     queryKey: ['/api/claims', id],
   });
 

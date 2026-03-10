@@ -12,6 +12,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/GlassCard';
 import { apiRequest, getApiUrl } from '@/lib/query-client';
 
+interface PaymentSummary {
+  totalPaid?: number;
+  totalClaims?: number;
+  pendingCount?: number;
+}
+
+interface PaymentData {
+  payments?: any[];
+  summary?: PaymentSummary;
+}
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { t, language } = useLanguage();
@@ -23,7 +34,7 @@ export default function ProfileScreen() {
   const [editPhone, setEditPhone] = useState(user?.phone || '');
   const [editNationalId, setEditNationalId] = useState(user?.nationalId || '');
 
-  const { data: paymentData } = useQuery({
+  const { data: paymentData } = useQuery<PaymentData>({
     queryKey: ['/api/payments/history'],
     enabled: !!user?.memberId,
   });
@@ -152,7 +163,7 @@ export default function ProfileScreen() {
           )}
         </GlassCard>
 
-        {summary && (summary.totalClaims > 0 || summary.totalPaid > 0) && (
+        {summary && ((summary.totalClaims ?? 0) > 0 || (summary.totalPaid ?? 0) > 0) && (
           <>
             <Text style={styles.sectionTitle}>{t('ملخص المدفوعات', 'Payment Summary')}</Text>
             <GlassCard style={styles.infoCard}>
@@ -168,7 +179,7 @@ export default function ProfileScreen() {
                 </View>
                 <View style={styles.paymentStatDivider} />
                 <View style={styles.paymentStat}>
-                  <Text style={[styles.paymentStatValue, summary.pendingCount > 0 && { color: '#f59e0b' }]}>
+                  <Text style={[styles.paymentStatValue, (summary.pendingCount ?? 0) > 0 && { color: '#f59e0b' }]}>
                     {summary.pendingCount || 0}
                   </Text>
                   <Text style={styles.paymentStatLabel}>{t('قيد الانتظار', 'Pending')}</Text>

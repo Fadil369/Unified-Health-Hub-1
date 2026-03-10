@@ -534,7 +534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/sbs/code/:sbsId", async (req: Request, res: Response) => {
     try {
-      const code = await getSBSCode(req.params.sbsId);
+      const code = await getSBSCode(req.params.sbsId as string);
       if (!code) {
         return res.status(404).json({ error: "SBS code not found" });
       }
@@ -559,7 +559,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/coverage/:memberId", async (req: Request, res: Response) => {
     try {
-      const coverage = await getCoverage(req.params.memberId);
+      const coverage = await getCoverage(req.params.memberId as string);
       if (!coverage) {
         return res.status(404).json({ error: "Coverage not found" });
       }
@@ -598,7 +598,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/claims/:id", async (req: Request, res: Response) => {
     try {
-      const claim = await getClaimById(req.params.id);
+      const claim = await getClaimById(req.params.id as string);
       if (!claim) {
         return res.status(404).json({ error: "Claim not found" });
       }

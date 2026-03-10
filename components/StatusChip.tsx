@@ -17,9 +17,9 @@ const statusConfig: Record<Status, { color: string; bgColor: string; ar: string;
   expired: { color: Colors.professionalGray, bgColor: 'rgba(100, 116, 139, 0.15)', ar: '\u0645\u0646\u062a\u0647\u064a', en: 'Expired' },
 };
 
-export function StatusChip({ status }: { status: Status }) {
+export function StatusChip({ status }: { status: string }) {
   const { t } = useLanguage();
-  const config = statusConfig[status] || statusConfig.pending;
+  const config = statusConfig[status as Status] || statusConfig.pending;
 
   return (
     <View style={[styles.chip, { backgroundColor: config.bgColor, borderColor: config.color }]}>

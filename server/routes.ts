@@ -263,10 +263,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await getUserFromToken(req);
       if (!user) return res.status(401).json({ error: "Not authenticated" });
 
-      await pool.query(
+      const notificationId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(notificationId)) {
+        return res.status(400).json({ error: "Invalid notification id" });
+      }
+
+      const result = await pool.query(
         "UPDATE user_notifications SET is_read = TRUE, updated_at = NOW() WHERE id = $1 AND user_id = $2",
-        [req.params.id, user.id]
+        [notificationId, user.id]
       );
+
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
       res.json({ success: true });
     } catch (error) {
       console.error("Mark notification read error:", error);

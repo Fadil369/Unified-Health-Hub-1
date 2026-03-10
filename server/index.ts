@@ -29,7 +29,7 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
   }, 5 * 60 * 1000);
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim()
+    const ip = req.ip
       || req.socket?.remoteAddress
       || "unknown";
     const now = Date.now();

@@ -175,13 +175,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Performance indexes on core tables
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_user_accounts_email     ON user_accounts(email);
-      CREATE INDEX IF NOT EXISTS idx_user_accounts_member_id  ON user_accounts(member_id);
-      CREATE INDEX IF NOT EXISTS idx_user_sessions_token      ON user_sessions(token);
+      CREATE INDEX IF NOT EXISTS idx_user_accounts_email ON user_accounts(email);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_accounts_member_id ON user_accounts(member_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token);
+    `);
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_user_sessions_expires_at ON user_sessions(expires_at);
-      CREATE INDEX IF NOT EXISTS idx_claims_member_id         ON healthcare_claims(member_id);
-      CREATE INDEX IF NOT EXISTS idx_claims_claim_number      ON healthcare_claims(claim_number);
-      CREATE INDEX IF NOT EXISTS idx_prior_auth_member_id     ON prior_authorizations(member_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_claims_member_id ON healthcare_claims(member_id);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_claims_claim_number ON healthcare_claims(claim_number);
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_prior_auth_member_id ON prior_authorizations(member_id);
     `);
   } catch (setupErr) {
     // Log but don't crash – tables may not exist yet on first boot

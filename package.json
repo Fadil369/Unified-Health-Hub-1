@@ -70,7 +70,7 @@
     "stripe": "^18.1.0",
     "stripe-replit-sync": "^1.0.0",
     "tsx": "^4.20.6",
-    "ws": "^8.18.0",
+    "ws": "^8.21.0",
     "zod": "^3.25.76",
     "zod-validation-error": "^3.5.4"
   },
@@ -87,5 +87,14 @@
     "patch-package": "^8.0.0",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "node-forge": "^1.4.0",
+    "yaml": "^2.9.0",
+    "qs": "^6.15.2",
+    "postcss": "^8.5.15",
+    "follow-redirects": "^1.16.0",
+    "path-to-regexp": "^8.4.2",
+    "fast-xml-parser": "^5.8.0"
+  }
 }
